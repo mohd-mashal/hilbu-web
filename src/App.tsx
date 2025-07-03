@@ -142,6 +142,21 @@ const App = () => {
           </div>
 
           <p style={styles.footer}>Powered by HILBU Technologies</p>
+
+          <div style={styles.storeRow}>
+            <img
+              src="/appstore.png"
+              alt="App Store"
+              style={styles.storeMiniIcon}
+              title="Coming soon on App Store"
+            />
+            <img
+              src="/playstore.png"
+              alt="Google Play"
+              style={styles.storeMiniIcon}
+              title="Coming soon on Google Play"
+            />
+          </div>
         </div>
       </div>
     );
@@ -314,7 +329,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   loginLogo: {
     width: 240,
-    height: 100,
+    height: 70,
     objectFit: 'contain',
     marginBottom: 10,
   },
@@ -367,23 +382,35 @@ const styles: Record<string, React.CSSProperties> = {
   },
   rememberText: { fontSize: 12, color: '#000' },
   loginButton: {
-  width: '100%',
-  backgroundColor: '#FFDC00',
-  borderRadius: 13,
-  fontWeight: 'bold',
-  fontSize: 15,
-  color: '#000',
-  border: 'none',
-  cursor: 'pointer',
-  padding: '14px 0',
-  display: 'flex',
-  justifyContent: 'center',
-  alignItems: 'center',
-  gap: 8,
-},
+    width: '100%',
+    backgroundColor: '#FFDC00',
+    borderRadius: 13,
+    fontWeight: 'bold',
+    fontSize: 15,
+    color: '#000',
+    border: 'none',
+    cursor: 'pointer',
+    padding: '14px 0',
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 8,
+  },
   footer: {
     fontSize: 12,
     color: '#888',
     marginTop: 30,
+  },
+  storeRow: {
+    display: 'flex',
+    justifyContent: 'center',
+    gap: 10,
+    marginTop: 10,
+  },
+  storeMiniIcon: {
+    height: 30,
+    opacity: 0.5,
+    cursor: 'not-allowed',
+    borderRadius: 6,
   },
 };
