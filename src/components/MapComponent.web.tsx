@@ -1,4 +1,3 @@
-
 interface MapComponentProps {
   location?: {
     latitude: number;
@@ -10,7 +9,7 @@ export default function MapComponent({ location }: MapComponentProps) {
   const lat = location?.latitude ?? 25.2048;
   const lng = location?.longitude ?? 55.2708;
 
-  const mapUrl = `https://www.google.com/maps/embed/v1/view?key=AIzaSyDxx_m4xk5fov1UoK8MkOFN7BCjQRQOHE0&center=${lat},${lng}&zoom=14&maptype=roadmap`;
+  const mapUrl = `https://www.google.com/maps/embed/v1/view?key=${import.meta.env.VITE_GOOGLE_MAPS_API_KEY}&center=${lat},${lng}&zoom=14&maptype=roadmap`;
 
   return (
     <div style={styles.container}>

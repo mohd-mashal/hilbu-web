@@ -4,12 +4,12 @@ import { getAuth } from 'firebase/auth';
 import { getMessaging } from 'firebase/messaging';
 
 const firebaseConfig = {
-  apiKey: 'AIzaSyDBtB9UwVqevdA83O4QBMBdLWxist0bUFI',
-  authDomain: 'hilbu-43fe3.firebaseapp.com',
-  projectId: 'hilbu-43fe3',
-  storageBucket: 'hilbu-43fe3.appspot.com',
-  messagingSenderId: '72954685761',
-  appId: '1:72954685761:web:21d947e21c29c556bd19c0',
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID,
 };
 
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
