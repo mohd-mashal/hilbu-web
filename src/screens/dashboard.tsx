@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import MapComponent from '../components/MapComponent.web';
+import { collection, getDocs } from 'firebase/firestore';
+import { firestore } from '../firebaseConfig';
 
 type ScreenKey =
   | 'dashboard'
@@ -17,26 +19,49 @@ export default function Dashboard({ setActiveTab }: { setActiveTab: (tab: Screen
   const [tab, setTab] = useState<'overview' | 'analytics'>('overview');
   const [refreshing, setRefreshing] = useState(false);
 
+  const [totalUsers, setTotalUsers] = useState(0);
+  const [totalDrivers, setTotalDrivers] = useState(0);
+  const [totalTrips, setTotalTrips] = useState(0);
+  const [totalPayouts, setTotalPayouts] = useState(0);
+
   useEffect(() => {
     const saved = localStorage.getItem('admin-auth');
     if (saved !== 'true') {
       window.location.href = '/login';
     } else {
       setReady(true);
+      fetchStats(); // Load stats from Firestore
     }
   }, []);
 
+  const fetchStats = async () => {
+    try {
+      // Total Users
+      const usersSnap = await getDocs(collection(firestore, 'users'));
+      setTotalUsers(usersSnap.size);
+
+      // Total Drivers
+      const driversSnap = await getDocs(collection(firestore, 'drivers'));
+      setTotalDrivers(driversSnap.size);
+
+      // Total Trips (completed jobs)
+      const tripsSnap = await getDocs(collection(firestore, 'trip_history_user'));
+      setTotalTrips(tripsSnap.size);
+
+      // Total Payout Requests
+      const payoutsSnap = await getDocs(collection(firestore, 'payout_requests'));
+      setTotalPayouts(payoutsSnap.size);
+    } catch (error) {
+      console.error('Error fetching stats:', error);
+    }
+  };
+
   const handleRefresh = () => {
     setRefreshing(true);
-    setTimeout(() => setRefreshing(false), 1000);
+    fetchStats().finally(() => setTimeout(() => setRefreshing(false), 500));
   };
 
   if (!ready) return null;
-
-  const totalUsers = 120;
-  const totalDrivers = 40;
-  const totalTrips = 300;
-  const totalPayouts = 8;
 
   return (
     <div style={styles.container}>
@@ -75,30 +100,10 @@ export default function Dashboard({ setActiveTab }: { setActiveTab: (tab: Screen
         <>
           <h2 style={styles.sectionTitle}>📊 Live Overview</h2>
           <div style={styles.cardRow}>
-            <Card
-              label="👤 Total Users"
-              value={totalUsers}
-              sub="active this month"
-              onPress={() => setActiveTab('users')}
-            />
-            <Card
-              label="🚗 Total Drivers"
-              value={totalDrivers}
-              sub="registered"
-              onPress={() => setActiveTab('drivers')}
-            />
-            <Card
-              label="🛣️ Total Trips"
-              value={totalTrips}
-              sub="completed"
-              onPress={() => setActiveTab('trips')}
-            />
-            <Card
-              label="💰 Payout Requests"
-              value={totalPayouts}
-              sub="pending"
-              onPress={() => setActiveTab('payouts')}
-            />
+            <Card label="👤 Total Users" value={totalUsers} sub="active this month" onPress={() => setActiveTab('users')} />
+            <Card label="🚗 Total Drivers" value={totalDrivers} sub="registered" onPress={() => setActiveTab('drivers')} />
+            <Card label="🛣️ Total Trips" value={totalTrips} sub="completed" onPress={() => setActiveTab('trips')} />
+            <Card label="💰 Payout Requests" value={totalPayouts} sub="pending" onPress={() => setActiveTab('payouts')} />
           </div>
         </>
       )}

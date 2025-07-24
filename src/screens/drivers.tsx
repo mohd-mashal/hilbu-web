@@ -1,31 +1,55 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { collection, onSnapshot, updateDoc, doc } from 'firebase/firestore';
+import { firestore } from '../firebaseConfig'; // Updated import path
 
-const mockDrivers = [
-  { id: '1', name: 'Driver A', phone: '0501234567', status: 'active' },
-  { id: '2', name: 'Driver B', phone: '0559876543', status: 'inactive' },
-];
+interface Driver {
+  id: string;
+  name: string;
+  phone: string;
+  status: string;
+}
 
 export default function AdminDrivers() {
-  const [drivers, setDrivers] = useState(mockDrivers);
+  const [drivers, setDrivers] = useState<Driver[]>([]);
 
-  const toggleStatus = (id: string) => {
-    const updated = drivers.map(d =>
-      d.id === id ? { ...d, status: d.status === 'active' ? 'inactive' : 'active' } : d
-    );
-    setDrivers(updated);
-    alert('Driver status has been changed.');
+  // Real-time fetch from Firestore
+  useEffect(() => {
+    const unsubscribe = onSnapshot(collection(firestore, 'drivers'), (snapshot) => {
+      const data: Driver[] = snapshot.docs.map((docSnap) => ({
+        id: docSnap.id,
+        ...docSnap.data(),
+      })) as Driver[];
+      setDrivers(data);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  const toggleStatus = async (id: string) => {
+    try {
+      const driverRef = doc(firestore, 'drivers', id);
+      const currentDriver = drivers.find((d) => d.id === id);
+      if (!currentDriver) return;
+
+      const newStatus = currentDriver.status === 'active' ? 'inactive' : 'active';
+      await updateDoc(driverRef, { status: newStatus });
+      alert(`Driver status changed to ${newStatus}.`);
+    } catch (error) {
+      console.error('Error toggling driver status:', error);
+      alert('Error updating driver status.');
+    }
   };
 
   return (
     <div style={styles.container}>
-      <h1 style={styles.title}>Manage Drivers</h1>
+      <h1 style={styles.title}>🚚 Manage Drivers</h1>
 
       <div style={styles.list}>
         {drivers.map((item) => (
           <div key={item.id} style={styles.card}>
-            <p style={styles.label}>👤 Name: <span style={styles.value}>{item.name}</span></p>
-            <p style={styles.label}>📱 Phone: <span style={styles.value}>{item.phone}</span></p>
-            <p style={styles.label}>⚙️ Status: <span style={styles.value}>{item.status}</span></p>
+            <p style={styles.label}>👤 Name: <span style={styles.value}>{item.name || 'N/A'}</span></p>
+            <p style={styles.label}>📱 Phone: <span style={styles.value}>{item.phone || 'N/A'}</span></p>
+            <p style={styles.label}>⚙️ Status: <span style={styles.value}>{item.status || 'inactive'}</span></p>
 
             <button style={styles.button} onClick={() => toggleStatus(item.id)}>
               Toggle Status
@@ -42,6 +66,7 @@ const styles: Record<string, React.CSSProperties> = {
     padding: 24,
     backgroundColor: '#fff',
     minHeight: '100vh',
+    fontFamily: 'Arial, sans-serif',
   },
   title: {
     fontSize: 26,

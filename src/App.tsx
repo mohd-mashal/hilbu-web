@@ -1,7 +1,6 @@
-// App.tsx
-
 import './index.css';
 import React, { useState, useEffect } from 'react';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import {
   Home, Users as UsersIcon, Truck, List, BarChart2, Bell,
   Activity, DollarSign, MessageCircle as MessageCircleIcon,
@@ -18,10 +17,17 @@ import LiveActivity from './screens/liveactivity';
 import Payouts from './screens/payouts';
 import SupportMessages from './screens/support';
 
-const ADMINS = [
-  { email: 'admin@hilbu.com', password: 'Hellokitty@7' },
-  { email: 'owner@hilbu.com', password: 'Secure123' },
-];
+import Privacy from './privacy';
+import Terms from './terms';
+
+// Load admin credentials from environment
+const adminEmails = (import.meta.env.VITE_ADMIN_EMAILS || '').split(',');
+const adminPasswords = (import.meta.env.VITE_ADMIN_PASSWORDS || '').split(',');
+
+const ADMINS = adminEmails.map((email: string, i: number) => ({
+  email: email.trim(),
+  password: adminPasswords[i]?.trim() || '',
+}));
 
 type ScreenKey =
   | 'dashboard' | 'users' | 'drivers' | 'trips'
@@ -61,21 +67,23 @@ const App = () => {
 
     if (savedAuth === 'true') {
       setAuthenticated(true);
+      if (savedEmail) setEmail(savedEmail);
     }
   }, []);
 
   const handleLogin = () => {
     const match = ADMINS.find(
-      (admin) => admin.email === email.trim() && admin.password === password
+      (admin: { email: string; password: string }) =>
+        admin.email === email.trim() && admin.password === password
     );
+
     if (match) {
       localStorage.setItem('admin-auth', 'true');
-      localStorage.setItem('admin-email', email.trim());
+      localStorage.setItem('admin-email', email.trim()); // Always save email
       if (rememberMe) {
         localStorage.setItem('admin-remember', 'true');
       } else {
         localStorage.removeItem('admin-remember');
-        localStorage.removeItem('admin-email');
       }
       setAuthenticated(true);
     } else {
@@ -92,77 +100,65 @@ const App = () => {
     setRememberMe(false);
   };
 
-  if (!authenticated) {
-    return (
-      <div style={styles.loginWrapper}>
-        <div style={styles.bgOverlay} />
-        <div style={styles.loginCard}>
-          <img src="/icon.png" alt="logo" style={styles.loginLogo} />
-          <p style={styles.tagline}>YOUR TRUSTED CAR RECOVERY SERVICE</p>
-          <h2 style={styles.title}>Welcome to HILBU Admin</h2>
-          <p style={styles.subtitle}>Sign in with your admin credentials</p>
+  const LoginScreen = (
+    <div style={styles.loginWrapper}>
+      <div style={styles.bgOverlay} />
+      <div style={styles.loginCard}>
+        <img src="/icon.png" alt="logo" style={styles.loginLogo} />
+        <p style={styles.tagline}>YOUR TRUSTED CAR RECOVERY SERVICE</p>
+        <h2 style={styles.title}>Welcome to HILBU Admin</h2>
+        <p style={styles.subtitle}>Sign in with your admin credentials</p>
 
-          <div style={styles.passwordRow}>
-            <Mail size={16} color="#999" style={{ marginRight: 8 }} />
-            <input
-              type="email"
-              placeholder="Admin Email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              style={styles.inputNoIcon}
-            />
-          </div>
+        <div style={styles.passwordRow}>
+          <Mail size={16} color="#999" style={{ marginRight: 8 }} />
+          <input
+            type="email"
+            placeholder="Admin Email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            style={styles.inputNoIcon}
+          />
+        </div>
 
-          <div style={styles.passwordRow}>
-            <Lock size={16} color="#999" style={{ marginRight: 8 }} />
-            <input
-              type="password"
-              placeholder="Admin Password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              style={styles.inputNoIcon}
-              onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
-            />
-          </div>
+        <div style={styles.passwordRow}>
+          <Lock size={16} color="#999" style={{ marginRight: 8 }} />
+          <input
+            type="password"
+            placeholder="Admin Password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            style={styles.inputNoIcon}
+            onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
+          />
+        </div>
 
-          <label style={styles.rememberRow}>
-            <input
-              type="checkbox"
-              checked={rememberMe}
-              onChange={() => setRememberMe(!rememberMe)}
-              style={styles.checkbox}
-            />
-            <span style={styles.rememberText}>Remember me</span>
-          </label>
+        <label style={styles.rememberRow}>
+          <input
+            type="checkbox"
+            checked={rememberMe}
+            onChange={() => setRememberMe(!rememberMe)}
+            style={styles.checkbox}
+          />
+          <span style={styles.rememberText}>Remember me</span>
+        </label>
 
-          <div style={{ display: 'flex', justifyContent: 'center' }}>
-            <button onClick={handleLogin} style={styles.loginButton}>
-              🔐 Login
-            </button>
-          </div>
+        <div style={{ display: 'flex', justifyContent: 'center' }}>
+          <button onClick={handleLogin} style={styles.loginButton}>
+            🔐 Login
+          </button>
+        </div>
 
-          <p style={styles.footer}>Powered by HILBU Technologies</p>
+        <p style={styles.footer}>Powered by HILBU Technologies</p>
 
-          <div style={styles.storeRow}>
-            <img
-              src="/appstore.png"
-              alt="App Store"
-              style={styles.storeMiniIcon}
-              title="Coming soon on App Store"
-            />
-            <img
-              src="/playstore.png"
-              alt="Google Play"
-              style={styles.storeMiniIcon}
-              title="Coming soon on Google Play"
-            />
-          </div>
+        <div style={styles.storeRow}>
+          <img src="/appstore.png" alt="App Store" style={styles.storeMiniIcon} title="Coming soon on App Store" />
+          <img src="/playstore.png" alt="Google Play" style={styles.storeMiniIcon} title="Coming soon on Google Play" />
         </div>
       </div>
-    );
-  }
+    </div>
+  );
 
-  return (
+  const AdminLayout = (
     <div style={styles.wrapper}>
       <div style={{ ...styles.sidebar, ...(collapsed ? styles.sidebarCollapsed : {}) }}>
         <button onClick={() => setCollapsed(!collapsed)} style={styles.toggleButton}>
@@ -220,6 +216,16 @@ const App = () => {
         <ActiveScreen />
       </div>
     </div>
+  );
+
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route path="/privacy" element={<Privacy />} />
+        <Route path="/terms" element={<Terms />} />
+        <Route path="*" element={authenticated ? AdminLayout : LoginScreen} />
+      </Routes>
+    </BrowserRouter>
   );
 };
 

@@ -1,37 +1,61 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { collection, getDocs } from 'firebase/firestore';
+import { getFirebaseDB } from '../firebaseConfig';
 
-const allPayouts = [
-  {
-    id: '1',
-    driver: 'Driver A',
-    amount: 120,
-    bank: 'Emirates NBD - 123456789',
-    status: 'approved',
-    date: '2024-05-01',
-  },
-  {
-    id: '2',
-    driver: 'Driver B',
-    amount: 90,
-    bank: 'ADCB - 654321987',
-    status: 'pending',
-    date: '2024-05-03',
-  },
-  {
-    id: '3',
-    driver: 'Driver C',
-    amount: 180,
-    bank: 'Mashreq - 1122334455',
-    status: 'approved',
-    date: '2024-06-05',
-  },
-];
+interface Payout {
+  id: string;
+  driver: string;
+  amount: number;
+  bank: string;
+  status: string;
+  date: string;
+}
 
 export default function ReportsScreen() {
+  const [payouts, setPayouts] = useState<Payout[]>([]);
   const [selectedMonth, setSelectedMonth] = useState('all');
   const [onlyApproved, setOnlyApproved] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-  const filtered = allPayouts.filter((p) => {
+  // Fetch payouts from Firestore
+  useEffect(() => {
+    const fetchPayouts = async () => {
+      try {
+        const db = getFirebaseDB();
+        const payoutsSnap = await getDocs(collection(db, 'payout_requests'));
+
+        const data: Payout[] = payoutsSnap.docs.map((doc) => {
+          const d = doc.data();
+          return {
+            id: doc.id,
+            driver: d.driverName || 'Unknown Driver',
+            amount: parseFloat(d.amount) || 0,
+            bank: d.bank || 'N/A',
+            status: d.status || 'pending',
+            date: d.timestamp
+              ? new Date(
+                  typeof d.timestamp === 'string'
+                    ? d.timestamp
+                    : d.timestamp.toDate()
+                )
+                  .toISOString()
+                  .split('T')[0]
+              : 'N/A',
+          };
+        });
+
+        setPayouts(data);
+      } catch (error) {
+        console.error('Error fetching payouts:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchPayouts();
+  }, []);
+
+  const filtered = payouts.filter((p) => {
     const matchMonth =
       selectedMonth === 'all' || p.date.startsWith(selectedMonth);
     const matchStatus = !onlyApproved || p.status === 'approved';
@@ -79,6 +103,14 @@ export default function ReportsScreen() {
     URL.revokeObjectURL(url);
   };
 
+  if (loading) {
+    return (
+      <div style={styles.loadingContainer}>
+        <h2 style={styles.loadingText}>Loading reports...</h2>
+      </div>
+    );
+  }
+
   return (
     <div style={styles.container}>
       <h2 style={styles.title}>📊 HILBU Admin Report</h2>
@@ -110,9 +142,15 @@ export default function ReportsScreen() {
       </div>
 
       <div style={styles.totalsBox}>
-        <p style={styles.totalsText}>📊 Total Requested: AED {totalAmount.toFixed(2)}</p>
-        <p style={styles.totalsText}>💼 HILBU Commission (20%): AED {totalCommission.toFixed(2)}</p>
-        <p style={styles.totalsText}>💰 Total Earnings (After): AED {totalEarnings.toFixed(2)}</p>
+        <p style={styles.totalsText}>
+          📊 Total Requested: AED {totalAmount.toFixed(2)}
+        </p>
+        <p style={styles.totalsText}>
+          💼 HILBU Commission (20%): AED {totalCommission.toFixed(2)}
+        </p>
+        <p style={styles.totalsText}>
+          💰 Total Earnings (After): AED {totalEarnings.toFixed(2)}
+        </p>
       </div>
 
       <button style={styles.button} onClick={exportToCSV}>
@@ -120,27 +158,39 @@ export default function ReportsScreen() {
       </button>
 
       <div style={styles.section}>
-        {filtered.map((p) => {
-          const commission = p.amount * 0.2;
-          const earnings = p.amount - commission;
+        {filtered.length === 0 ? (
+          <p style={styles.noData}>No payouts found.</p>
+        ) : (
+          filtered.map((p) => {
+            const commission = p.amount * 0.2;
+            const earnings = p.amount - commission;
 
-          return (
-            <div key={p.id} style={styles.card}>
-              <p style={styles.label}>Driver: {p.driver}</p>
-              <p style={styles.label}>Date: {p.date}</p>
-              <p style={styles.label}>Bank: {p.bank}</p>
-              <p style={styles.label}>Amount: AED {p.amount.toFixed(2)}</p>
-              <p style={styles.label}>HILBU Commission (20%): AED {commission.toFixed(2)}</p>
-              <p style={styles.label}>Net Earnings: AED {earnings.toFixed(2)}</p>
-              <p style={{
-                ...styles.status,
-                color: p.status === 'approved' ? 'green' : '#cc9900',
-              }}>
-                {p.status === 'approved' ? '✅ Approved' : '🕓 Pending'}
-              </p>
-            </div>
-          );
-        })}
+            return (
+              <div key={p.id} style={styles.card}>
+                <p style={styles.label}>Driver: {p.driver}</p>
+                <p style={styles.label}>Date: {p.date}</p>
+                <p style={styles.label}>Bank: {p.bank}</p>
+                <p style={styles.label}>
+                  Amount: AED {p.amount.toFixed(2)}
+                </p>
+                <p style={styles.label}>
+                  HILBU Commission (20%): AED {commission.toFixed(2)}
+                </p>
+                <p style={styles.label}>
+                  Net Earnings: AED {earnings.toFixed(2)}
+                </p>
+                <p
+                  style={{
+                    ...styles.status,
+                    color: p.status === 'approved' ? 'green' : '#cc9900',
+                  }}
+                >
+                  {p.status === 'approved' ? '✅ Approved' : '🕓 Pending'}
+                </p>
+              </div>
+            );
+          })
+        )}
       </div>
     </div>
   );
@@ -228,5 +278,20 @@ const styles: Record<string, React.CSSProperties> = {
     cursor: 'pointer',
     border: 'none',
     marginBottom: 30,
+  },
+  loadingContainer: {
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+    height: '100vh',
+  },
+  loadingText: {
+    fontSize: 20,
+    color: '#000',
+  },
+  noData: {
+    textAlign: 'center',
+    color: '#555',
+    fontSize: 16,
   },
 };

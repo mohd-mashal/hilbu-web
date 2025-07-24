@@ -10,6 +10,7 @@ type Message = {
   text: string;
   isUser: boolean;
   timestamp?: any;
+  seen?: boolean;
 };
 
 export default function SupportMessages() {
@@ -24,6 +25,7 @@ export default function SupportMessages() {
 
   const db = getFirebaseDB();
 
+  // Fetch list of unique users/drivers
   useEffect(() => {
     const q = query(collection(db, 'support_messages'), orderBy('timestamp', 'desc'));
     const unsubscribe = onSnapshot(q, async (snapshot) => {
@@ -49,20 +51,16 @@ export default function SupportMessages() {
           unique.set(data.phone, { phone: data.phone, name, role, unread: 0 });
         }
 
-        if (!data.isUser && data.seen === false) {
+        if (data.isUser && data.seen === false) {
           const current = unique.get(data.phone);
           if (current) current.unread += 1;
         }
       }
 
-      const sortedUsers = Array.from(unique.values()).sort((a, b) => {
-        if (a.unread && !b.unread) return -1;
-        if (!a.unread && b.unread) return 1;
-        return 0;
-      });
-
+      const sortedUsers = Array.from(unique.values()).sort((a, b) => b.unread - a.unread);
       setUsers(sortedUsers);
       setFilteredUsers(sortedUsers);
+
       if (!selectedPhone && sortedUsers.length > 0) {
         setSelectedPhone(sortedUsers[0].phone);
         setSelectedUserName(sortedUsers[0].name || sortedUsers[0].phone);
@@ -70,36 +68,48 @@ export default function SupportMessages() {
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [selectedPhone]);
 
+  // Fetch messages for selected user/driver
   useEffect(() => {
     if (!selectedPhone) return;
+
     const q = query(
       collection(db, 'support_messages'),
       where('phone', '==', selectedPhone),
       orderBy('timestamp', 'asc')
     );
+
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const msgs: Message[] = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Message));
+      const msgs: Message[] = snapshot.docs.map((docSnap) => ({
+        id: docSnap.id,
+        ...docSnap.data(),
+      })) as Message[];
       setMessages(msgs);
       setTimeout(() => scrollRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
     });
+
     return () => unsubscribe();
   }, [selectedPhone]);
 
+  // Send admin reply
   const sendReply = async () => {
     if (!reply.trim() || !selectedPhone) return;
 
-    const replyText = reply.trim();
-    await addDoc(collection(db, 'support_messages'), {
-      text: replyText,
-      isUser: false,
-      phone: selectedPhone,
-      seen: false,
-      timestamp: Timestamp.now(),
-    });
+    try {
+      await addDoc(collection(db, 'support_messages'), {
+        text: reply.trim(),
+        isUser: false,
+        phone: selectedPhone,
+        seen: false,
+        timestamp: Timestamp.now(),
+      });
 
-    setReply('');
+      setReply('');
+    } catch (error) {
+      console.error('Error sending reply:', error);
+      alert('Failed to send message.');
+    }
   };
 
   const handleSearch = (text: string) => {
@@ -157,9 +167,11 @@ export default function SupportMessages() {
             }}
           >
             <p style={{ margin: 0 }}>{msg.text}</p>
-            <small style={styles.time}>
-              {msg.timestamp?.toDate().toLocaleString()}
-            </small>
+            {msg.timestamp && (
+              <small style={styles.time}>
+                {msg.timestamp.toDate().toLocaleString()}
+              </small>
+            )}
           </div>
         ))}
         <div ref={scrollRef} />

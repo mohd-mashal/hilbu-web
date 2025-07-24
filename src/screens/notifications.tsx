@@ -17,17 +17,19 @@ export default function AdminNotifications() {
       const db = getFirebaseDB();
       let tokens: string[] = [];
 
+      // Fetch user tokens
       if (target === 'all' || target === 'users') {
         const usersSnap = await getDocs(collection(db, 'users'));
-        usersSnap.forEach(doc => {
+        usersSnap.forEach((doc) => {
           const data = doc.data();
           if (data.expoPushToken) tokens.push(data.expoPushToken);
         });
       }
 
+      // Fetch driver tokens
       if (target === 'all' || target === 'drivers') {
         const driversSnap = await getDocs(collection(db, 'drivers'));
-        driversSnap.forEach(doc => {
+        driversSnap.forEach((doc) => {
           const data = doc.data();
           if (data.expoPushToken) tokens.push(data.expoPushToken);
         });
@@ -38,7 +40,8 @@ export default function AdminNotifications() {
         return;
       }
 
-      const chunks = [];
+      // Send notifications in batches of 100
+      const chunks: string[][] = [];
       for (let i = 0; i < tokens.length; i += 100) {
         chunks.push(tokens.slice(i, i + 100));
       }
@@ -52,7 +55,7 @@ export default function AdminNotifications() {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify(
-            batch.map(token => ({
+            batch.map((token) => ({
               to: token,
               sound: 'default',
               title: 'HILBU',
@@ -101,9 +104,7 @@ export default function AdminNotifications() {
             🚀 Send
           </button>
 
-          {showSuccess && (
-            <div style={styles.success}>✅ Notification Sent!</div>
-          )}
+          {showSuccess && <div style={styles.success}>✅ Notification Sent!</div>}
         </div>
       </div>
     </div>

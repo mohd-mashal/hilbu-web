@@ -1,51 +1,81 @@
 import React, { useEffect, useState } from 'react';
-// Update the path below if your firebaseConfig file is in a different location
 import { getFirebaseDB } from '../firebaseConfig';
-import { collection, getDocs, updateDoc, doc } from 'firebase/firestore';
+import { collection, onSnapshot, updateDoc, doc } from 'firebase/firestore';
 
 interface Payout {
   id: string;
-  accountName: string;
-  bankName: string;
-  accountNumber: string;
-  iban: string;
-  amount: number;
-  status: string;
-  timestamp: string;
+  accountName?: string;
+  bankName?: string;
+  accountNumber?: string;
+  iban?: string;
+  amount?: number;
+  status?: string;
+  timestamp?: string;
 }
 
 export default function AdminPayouts() {
   const [requests, setRequests] = useState<Payout[]>([]);
-
+  const [loading, setLoading] = useState(true);
   const db = getFirebaseDB();
 
+  // Real-time listener for payout requests
   useEffect(() => {
-    const fetchPayouts = async () => {
-      const snapshot = await getDocs(collection(db, 'payout_requests'));
-      const data: Payout[] = snapshot.docs.map((docSnap) => ({
-        id: docSnap.id,
-        ...docSnap.data(),
-      })) as Payout[];
-      setRequests(data);
-    };
+    const unsubscribe = onSnapshot(
+      collection(db, 'payout_requests'),
+      (snapshot) => {
+        const data: Payout[] = snapshot.docs.map((docSnap) => ({
+          id: docSnap.id,
+          ...docSnap.data(),
+        })) as Payout[];
+        setRequests(data);
+        setLoading(false);
+      },
+      (error) => {
+        console.error('Error fetching payout requests:', error);
+        setLoading(false);
+      }
+    );
 
-    fetchPayouts();
-  }, []);
+    return () => unsubscribe();
+  }, [db]);
 
   const approve = async (id: string) => {
-    const ref = doc(db, 'payout_requests', id);
-    await updateDoc(ref, { status: 'approved' });
+    try {
+      const ref = doc(db, 'payout_requests', id);
+      await updateDoc(ref, { status: 'approved' });
 
-    const updated = requests.map((r) =>
-      r.id === id ? { ...r, status: 'approved' } : r
-    );
-    setRequests(updated);
-    alert('✅ Payout Approved');
+      setRequests((prev) =>
+        prev.map((r) => (r.id === id ? { ...r, status: 'approved' } : r))
+      );
+      alert('✅ Payout Approved');
+    } catch (error) {
+      console.error('Error approving payout:', error);
+      alert('❌ Failed to approve payout. Try again.');
+    }
   };
 
-  const totalAmount = requests.reduce((sum, r) => sum + r.amount, 0);
+  const totalAmount = requests.reduce(
+    (sum, r) => sum + (r.amount || 0),
+    0
+  );
   const totalCommission = totalAmount * 0.2;
   const totalEarnings = totalAmount - totalCommission;
+
+  if (loading) {
+    return (
+      <div style={styles.loadingContainer}>
+        <h2 style={styles.loadingText}>Loading payout requests...</h2>
+      </div>
+    );
+  }
+
+  if (requests.length === 0) {
+    return (
+      <div style={styles.loadingContainer}>
+        <h2 style={styles.loadingText}>No payout requests found.</h2>
+      </div>
+    );
+  }
 
   return (
     <div style={styles.container}>
@@ -63,19 +93,24 @@ export default function AdminPayouts() {
 
       <div style={styles.list}>
         {requests.map((item) => {
-          const commission = item.amount * 0.2;
-          const earnings = item.amount - commission;
+          const commission = (item.amount || 0) * 0.2;
+          const earnings = (item.amount || 0) - commission;
 
           return (
             <div key={item.id} style={styles.card}>
-              <p style={styles.row}><strong>👤 Account Name:</strong> {item.accountName}</p>
-              <p style={styles.row}><strong>💰 Requested Amount:</strong> AED {item.amount.toFixed(2)}</p>
-              <p style={styles.row}><strong>🏦 Bank:</strong> {item.bankName} - {item.accountNumber}</p>
-              <p style={styles.row}><strong>IBAN:</strong> {item.iban}</p>
+              <p style={styles.row}><strong>👤 Account Name:</strong> {item.accountName || 'N/A'}</p>
+              <p style={styles.row}><strong>💰 Requested Amount:</strong> AED {(item.amount || 0).toFixed(2)}</p>
+              <p style={styles.row}><strong>🏦 Bank:</strong> {item.bankName || 'N/A'} - {item.accountNumber || 'N/A'}</p>
+              <p style={styles.row}><strong>IBAN:</strong> {item.iban || 'N/A'}</p>
               <p style={styles.row}><strong>HILBU Commission (20%):</strong> AED {commission.toFixed(2)}</p>
               <p style={styles.row}><strong>Earnings (After):</strong> AED {earnings.toFixed(2)}</p>
 
-              <p style={{ ...styles.status, color: item.status === 'approved' ? 'green' : '#cc9900' }}>
+              <p
+                style={{
+                  ...styles.status,
+                  color: item.status === 'approved' ? 'green' : '#cc9900',
+                }}
+              >
                 {item.status === 'approved' ? '✅ Approved' : '🕓 Pending Approval'}
               </p>
 
@@ -163,5 +198,20 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 10,
     border: 'none',
     cursor: 'pointer',
+  },
+  loadingContainer: {
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+    height: '100vh',
+  },
+  loadingText: {
+    fontSize: 20,
+    color: '#000',
+  },
+  noData: {
+    textAlign: 'center',
+    color: '#555',
+    fontSize: 16,
   },
 };

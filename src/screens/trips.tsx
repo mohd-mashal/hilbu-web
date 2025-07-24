@@ -1,36 +1,97 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { collection, getDocs } from 'firebase/firestore';
+import { getFirebaseDB } from '../firebaseConfig';
 
-const mockTrips = [
-  { id: '1', driver: 'Driver A', rider: 'User X', date: '2024-05-01', amount: 75 },
-  { id: '2', driver: 'Driver B', rider: 'User Y', date: '2024-05-02', amount: 90 },
-  { id: '3', driver: 'Driver A', rider: 'User Z', date: '2024-05-03', amount: 110 },
-];
+interface TripData {
+  id: string;
+  driver: string;
+  rider: string;
+  date: string;
+  amount: number;
+}
 
 export default function AdminTrips() {
-  const [trips] = useState(mockTrips);
+  const [trips, setTrips] = useState<TripData[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchTrips = async () => {
+      try {
+        const db = getFirebaseDB();
+        const tripsSnap = await getDocs(collection(db, 'trip_history_driver'));
+
+        const tripsData: TripData[] = tripsSnap.docs.map((doc) => {
+          const data = doc.data();
+          return {
+            id: doc.id,
+            driver: data.driverPhone || 'Unknown Driver',
+            rider: data.userPhone || 'Unknown User',
+            date: data.timestamp
+              ? new Date(
+                  typeof data.timestamp === 'string'
+                    ? data.timestamp
+                    : data.timestamp.toDate()
+                ).toLocaleDateString()
+              : 'N/A',
+            amount: parseFloat(data.amount) || 0,
+          };
+        });
+
+        setTrips(tripsData);
+      } catch (error) {
+        console.error('Error fetching trips:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchTrips();
+  }, []);
+
+  if (loading) {
+    return (
+      <div style={styles.loadingContainer}>
+        <h2 style={styles.loadingText}>Loading trip history...</h2>
+      </div>
+    );
+  }
 
   return (
     <div style={styles.container}>
       <h1 style={styles.title}>🧾 Trip History</h1>
 
       <div style={styles.list}>
-        {trips.map((item) => {
-          const commission = item.amount * 0.2;
-          const earnings = item.amount - commission;
+        {trips.length === 0 ? (
+          <p style={styles.noData}>No trips found.</p>
+        ) : (
+          trips.map((item) => {
+            const commission = item.amount * 0.2;
+            const earnings = item.amount - commission;
 
-          return (
-            <div key={item.id} style={styles.card}>
-              <p style={styles.label}><strong>🚗 Driver:</strong> {item.driver}</p>
-              <p style={styles.label}><strong>🙋 Rider:</strong> {item.rider}</p>
-              <p style={styles.label}><strong>📅 Date:</strong> {item.date}</p>
-              <p style={styles.label}><strong>💵 Amount:</strong> AED {item.amount.toFixed(2)}</p>
-              <p style={styles.labelGreen}>
-                <strong>✅ Earnings After 20%:</strong>{' '}
-                <span style={styles.valueGreen}>AED {earnings.toFixed(2)}</span>
-              </p>
-            </div>
-          );
-        })}
+            return (
+              <div key={item.id} style={styles.card}>
+                <p style={styles.label}>
+                  <strong>🚗 Driver:</strong> {item.driver}
+                </p>
+                <p style={styles.label}>
+                  <strong>🙋 Rider:</strong> {item.rider}
+                </p>
+                <p style={styles.label}>
+                  <strong>📅 Date:</strong> {item.date}
+                </p>
+                <p style={styles.label}>
+                  <strong>💵 Amount:</strong> AED {item.amount.toFixed(2)}
+                </p>
+                <p style={styles.labelGreen}>
+                  <strong>✅ Earnings After 20%:</strong>{' '}
+                  <span style={styles.valueGreen}>
+                    AED {earnings.toFixed(2)}
+                  </span>
+                </p>
+              </div>
+            );
+          })
+        )}
       </div>
     </div>
   );
@@ -75,5 +136,21 @@ const styles: { [key: string]: React.CSSProperties } = {
   valueGreen: {
     color: '#006400',
     fontWeight: 'normal',
+  },
+  loadingContainer: {
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+    height: '100vh',
+    backgroundColor: '#fff',
+  },
+  loadingText: {
+    fontSize: 20,
+    color: '#000',
+  },
+  noData: {
+    textAlign: 'center',
+    color: '#555',
+    fontSize: 16,
   },
 };

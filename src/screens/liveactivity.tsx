@@ -1,32 +1,103 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import MapComponent from '../components/MapComponent.web';
+import { collection, onSnapshot } from 'firebase/firestore';
+import { firestore } from '../firebaseConfig';
 
-const LiveActivity = () => {
-  const logs = [
-    { id: '1', time: '10:00', driver: 'John', action: 'Started trip' },
-    { id: '2', time: '10:15', driver: 'John', action: 'Picked up a car' },
-    { id: '3', time: '10:30', driver: 'John', action: 'Dropped off a car' },
-  ];
+interface LocationData {
+  latitude: number;
+  longitude: number;
+  timestamp?: string;
+}
+
+interface UserData {
+  id: string;
+  name: string;
+  phone?: string;
+  location?: LocationData;
+}
+
+interface DriverData {
+  id: string;
+  name: string;
+  phone?: string;
+  location?: LocationData;
+  isOnline?: boolean;
+}
+
+interface LogEntry {
+  id: string;
+  time: string;
+  driver: string;
+  action: string;
+}
+
+export default function LiveActivity() {
+  const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [userLocations, setUserLocations] = useState<UserData[]>([]);
+  const [driverLocations, setDriverLocations] = useState<DriverData[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    // Listen to users' real-time locations
+    const unsubUsers = onSnapshot(collection(firestore, 'users'), (snapshot) => {
+      const users = snapshot.docs
+        .map((doc) => ({ id: doc.id, ...doc.data() }))
+        .filter((u) => (u as UserData).location) as UserData[];
+      setUserLocations(users);
+    });
+
+    // Listen to drivers' real-time locations
+    const unsubDrivers = onSnapshot(collection(firestore, 'drivers'), (snapshot) => {
+      const drivers = snapshot.docs
+        .map((doc) => ({ id: doc.id, ...doc.data() }))
+        .filter((d) => (d as DriverData).location) as DriverData[];
+      setDriverLocations(drivers);
+
+      // Create live logs
+      const driverLogs = drivers.map((driver, index) => ({
+        id: driver.id || index.toString(),
+        time: new Date().toLocaleTimeString(),
+        driver: driver.name || 'Driver',
+        action: driver.isOnline ? 'Online & Available' : 'Offline',
+      }));
+      setLogs(driverLogs);
+      setLoading(false);
+    });
+
+    return () => {
+      unsubUsers();
+      unsubDrivers();
+    };
+  }, []);
 
   return (
     <div style={styles.container}>
       <h2 style={styles.title}>Live Driver & User Map</h2>
 
       <div style={styles.mapContainer}>
-        <MapComponent />
+        <MapComponent
+          userLocations={userLocations.map((u) => u.location!).filter(Boolean)}
+          driverLocations={driverLocations.map((d) => d.location!).filter(Boolean)}
+        />
       </div>
 
       <h2 style={styles.title}>Driver Activity Logs</h2>
-      {logs.map((item) => (
-        <div key={item.id} style={styles.logCard}>
-          <p style={styles.logText}>
-            🕒 {item.time} - {item.driver} - {item.action}
-          </p>
-        </div>
-      ))}
+      {loading ? (
+        <p style={styles.emptyLogs}>Loading real-time data...</p>
+      ) : logs.length === 0 ? (
+        <p style={styles.emptyLogs}>No recent activity logs.</p>
+      ) : (
+        logs.map((item) => (
+          <div key={item.id} style={styles.logCard}>
+            <p style={styles.logText}>
+              🕒 {item.time} - {item.driver} - {item.action}
+            </p>
+          </div>
+        ))
+      )}
     </div>
   );
-};
+}
 
 const styles: Record<string, React.CSSProperties> = {
   container: {
@@ -61,6 +132,9 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 16,
     fontWeight: 500,
   },
+  emptyLogs: {
+    textAlign: 'center',
+    color: '#555',
+    fontSize: 14,
+  },
 };
-
-export default LiveActivity;

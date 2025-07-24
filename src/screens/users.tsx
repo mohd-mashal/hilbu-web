@@ -1,41 +1,83 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { collection, onSnapshot, updateDoc, doc } from 'firebase/firestore';
+import { firestore } from '../firebaseConfig'; // Updated path to match the new firebaseConfig.ts
 
-const mockUsers = [
-  { id: '1', name: 'Ali Hassan', email: 'ali@example.com', status: 'active', recovery: false },
-  { id: '2', name: 'Sara Ahmed', email: 'sara@example.com', status: 'suspended', recovery: true },
-];
+interface User {
+  id: string;
+  name: string;
+  email: string;
+  phone?: string;
+  status: string;
+  recovery: boolean;
+}
 
 export default function AdminUsers() {
-  const [users, setUsers] = useState(mockUsers);
+  const [users, setUsers] = useState<User[]>([]);
 
-  const toggleRecovery = (id: string) => {
-    const updated = users.map(user =>
-      user.id === id ? { ...user, recovery: !user.recovery } : user
-    );
-    setUsers(updated);
-    alert('Recovery Toggled\nUser recovery request updated.');
+  // Fetch users in real-time
+  useEffect(() => {
+    const unsubscribe = onSnapshot(collection(firestore, 'users'), (snapshot) => {
+      const data: User[] = snapshot.docs.map((docSnap) => ({
+        id: docSnap.id,
+        ...docSnap.data(),
+      })) as User[];
+      setUsers(data);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  const toggleRecovery = async (id: string) => {
+    try {
+      const userRef = doc(firestore, 'users', id);
+      const currentUser = users.find((u) => u.id === id);
+      if (!currentUser) return;
+
+      await updateDoc(userRef, { recovery: !currentUser.recovery });
+      alert('Recovery Toggled\nUser recovery request updated.');
+    } catch (error) {
+      console.error('Error toggling recovery:', error);
+      alert('Error updating recovery status.');
+    }
   };
 
-  const toggleStatus = (id: string) => {
-    const updated = users.map(user =>
-      user.id === id
-        ? { ...user, status: user.status === 'active' ? 'suspended' : 'active' }
-        : user
-    );
-    setUsers(updated);
-    alert('Status Updated\nUser status has been changed.');
+  const toggleStatus = async (id: string) => {
+    try {
+      const userRef = doc(firestore, 'users', id);
+      const currentUser = users.find((u) => u.id === id);
+      if (!currentUser) return;
+
+      await updateDoc(userRef, {
+        status: currentUser.status === 'active' ? 'suspended' : 'active',
+      });
+      alert('Status Updated\nUser status has been changed.');
+    } catch (error) {
+      console.error('Error toggling status:', error);
+      alert('Error updating user status.');
+    }
   };
 
   return (
     <div style={styles.container}>
       <h1 style={styles.title}>👥 Manage Users</h1>
       <div style={styles.list}>
-        {users.map(user => (
+        {users.map((user) => (
           <div key={user.id} style={styles.card}>
-            <p style={styles.label}>👤 Name: <span style={styles.value}>{user.name}</span></p>
-            <p style={styles.label}>📧 Email: <span style={styles.value}>{user.email}</span></p>
-            <p style={styles.label}>⚙️ Status: <span style={styles.value}>{user.status}</span></p>
-            <p style={styles.label}>🛠 Recovery: <span style={styles.value}>{user.recovery ? 'Yes' : 'No'}</span></p>
+            <p style={styles.label}>
+              👤 Name: <span style={styles.value}>{user.name || 'N/A'}</span>
+            </p>
+            <p style={styles.label}>
+              📧 Email: <span style={styles.value}>{user.email || 'N/A'}</span>
+            </p>
+            <p style={styles.label}>
+              📱 Phone: <span style={styles.value}>{user.phone || 'N/A'}</span>
+            </p>
+            <p style={styles.label}>
+              ⚙️ Status: <span style={styles.value}>{user.status || 'active'}</span>
+            </p>
+            <p style={styles.label}>
+              🛠 Recovery: <span style={styles.value}>{user.recovery ? 'Yes' : 'No'}</span>
+            </p>
 
             <div style={styles.buttons}>
               <button style={styles.button} onClick={() => toggleStatus(user.id)}>
