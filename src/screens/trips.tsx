@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { collection, getDocs } from 'firebase/firestore';
-import { getFirebaseDB } from '../firebaseConfig';
+import { firestore } from '../firebaseConfig';
 
 interface TripData {
   id: string;
@@ -8,6 +8,8 @@ interface TripData {
   rider: string;
   date: string;
   amount: number;
+  pickup?: string;
+  dropoff?: string;
 }
 
 export default function AdminTrips() {
@@ -17,23 +19,23 @@ export default function AdminTrips() {
   useEffect(() => {
     const fetchTrips = async () => {
       try {
-        const db = getFirebaseDB();
-        const tripsSnap = await getDocs(collection(db, 'trip_history_driver'));
+        const tripsSnap = await getDocs(collection(firestore, 'trip_history_driver'));
 
         const tripsData: TripData[] = tripsSnap.docs.map((doc) => {
           const data = doc.data();
+          const date =
+            data.timestamp?.toDate
+              ? data.timestamp.toDate().toLocaleDateString()
+              : new Date(data.timestamp || Date.now()).toLocaleDateString();
+
           return {
             id: doc.id,
             driver: data.driverPhone || 'Unknown Driver',
             rider: data.userPhone || 'Unknown User',
-            date: data.timestamp
-              ? new Date(
-                  typeof data.timestamp === 'string'
-                    ? data.timestamp
-                    : data.timestamp.toDate()
-                ).toLocaleDateString()
-              : 'N/A',
+            date,
             amount: parseFloat(data.amount) || 0,
+            pickup: data.pickup || 'N/A',
+            dropoff: data.dropoff || 'N/A',
           };
         });
 
@@ -70,23 +72,15 @@ export default function AdminTrips() {
 
             return (
               <div key={item.id} style={styles.card}>
-                <p style={styles.label}>
-                  <strong>🚗 Driver:</strong> {item.driver}
-                </p>
-                <p style={styles.label}>
-                  <strong>🙋 Rider:</strong> {item.rider}
-                </p>
-                <p style={styles.label}>
-                  <strong>📅 Date:</strong> {item.date}
-                </p>
-                <p style={styles.label}>
-                  <strong>💵 Amount:</strong> AED {item.amount.toFixed(2)}
-                </p>
+                <p style={styles.label}><strong>🚗 Driver:</strong> {item.driver}</p>
+                <p style={styles.label}><strong>🙋 Rider:</strong> {item.rider}</p>
+                <p style={styles.label}><strong>📍 Pickup:</strong> {item.pickup}</p>
+                <p style={styles.label}><strong>📍 Drop-off:</strong> {item.dropoff}</p>
+                <p style={styles.label}><strong>📅 Date:</strong> {item.date}</p>
+                <p style={styles.label}><strong>💵 Amount:</strong> AED {item.amount.toFixed(2)}</p>
                 <p style={styles.labelGreen}>
-                  <strong>✅ Earnings After 20%:</strong>{' '}
-                  <span style={styles.valueGreen}>
-                    AED {earnings.toFixed(2)}
-                  </span>
+                  <strong>✅ Earnings After 20%:</strong>
+                  <span style={styles.valueGreen}> AED {earnings.toFixed(2)}</span>
                 </p>
               </div>
             );

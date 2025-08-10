@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import MapComponent from '../components/MapComponent.web';
-import { collection, getDocs } from 'firebase/firestore';
+import { collection, getDocs, query, orderBy, limit } from 'firebase/firestore';
 import { firestore } from '../firebaseConfig';
 
 type ScreenKey =
@@ -14,6 +14,9 @@ type ScreenKey =
   | 'payouts'
   | 'support';
 
+const toText = (v: any) =>
+  typeof v === 'string' ? v : v?.address ?? '';
+
 export default function Dashboard({ setActiveTab }: { setActiveTab: (tab: ScreenKey) => void }) {
   const [ready, setReady] = useState(false);
   const [tab, setTab] = useState<'overview' | 'analytics'>('overview');
@@ -23,6 +26,7 @@ export default function Dashboard({ setActiveTab }: { setActiveTab: (tab: Screen
   const [totalDrivers, setTotalDrivers] = useState(0);
   const [totalTrips, setTotalTrips] = useState(0);
   const [totalPayouts, setTotalPayouts] = useState(0);
+  const [recentJobs, setRecentJobs] = useState<any[]>([]);
 
   useEffect(() => {
     const saved = localStorage.getItem('admin-auth');
@@ -30,25 +34,22 @@ export default function Dashboard({ setActiveTab }: { setActiveTab: (tab: Screen
       window.location.href = '/login';
     } else {
       setReady(true);
-      fetchStats(); // Load stats from Firestore
+      fetchStats();
+      fetchRecentJobs();
     }
   }, []);
 
   const fetchStats = async () => {
     try {
-      // Total Users
       const usersSnap = await getDocs(collection(firestore, 'users'));
       setTotalUsers(usersSnap.size);
 
-      // Total Drivers
       const driversSnap = await getDocs(collection(firestore, 'drivers'));
       setTotalDrivers(driversSnap.size);
 
-      // Total Trips (completed jobs)
       const tripsSnap = await getDocs(collection(firestore, 'trip_history_user'));
       setTotalTrips(tripsSnap.size);
 
-      // Total Payout Requests
       const payoutsSnap = await getDocs(collection(firestore, 'payout_requests'));
       setTotalPayouts(payoutsSnap.size);
     } catch (error) {
@@ -56,9 +57,27 @@ export default function Dashboard({ setActiveTab }: { setActiveTab: (tab: Screen
     }
   };
 
+  const fetchRecentJobs = async () => {
+    try {
+      const jobsQuery = query(
+        collection(firestore, 'recovery_requests'),
+        orderBy('timestamp', 'desc'),
+        limit(5)
+      );
+      const jobsSnap = await getDocs(jobsQuery);
+      const jobs: any[] = [];
+      jobsSnap.forEach((doc) => jobs.push({ id: doc.id, ...doc.data() }));
+      setRecentJobs(jobs);
+    } catch (error) {
+      console.error('Error fetching recent jobs:', error);
+    }
+  };
+
   const handleRefresh = () => {
     setRefreshing(true);
-    fetchStats().finally(() => setTimeout(() => setRefreshing(false), 500));
+    Promise.all([fetchStats(), fetchRecentJobs()]).finally(() =>
+      setTimeout(() => setRefreshing(false), 500)
+    );
   };
 
   if (!ready) return null;
@@ -111,15 +130,23 @@ export default function Dashboard({ setActiveTab }: { setActiveTab: (tab: Screen
       {tab === 'analytics' && (
         <div style={styles.mapContainer}>
           <h3 style={styles.mapTitle}>Live Map</h3>
-          <MapComponent />
+          <div style={{ height: '60vh', minHeight: 420, borderRadius: 12, overflow: 'hidden' }}>
+            <MapComponent />
+          </div>
         </div>
       )}
 
       <div style={styles.logsContainer}>
-        <h3 style={styles.sectionTitle}>📝 Recent System Logs</h3>
-        <p style={styles.logText}>• Driver A completed a trip in Downtown</p>
-        <p style={styles.logText}>• New payout request from Driver C</p>
-        <p style={styles.logText}>• User Y requested car recovery</p>
+        <h3 style={styles.sectionTitle}>📝 Recent Recovery Jobs</h3>
+        {recentJobs.length === 0 ? (
+          <p style={styles.logText}>No recent recovery jobs found.</p>
+        ) : (
+          recentJobs.map((job) => (
+            <p key={job.id} style={styles.logText}>
+              • {job.pickupAddress || toText(job.pickup)} → {job.dropoffAddress || toText(job.dropoff)} ({job.status || '—'})
+            </p>
+          ))
+        )}
       </div>
     </div>
   );
@@ -264,7 +291,6 @@ const styles: Record<string, React.CSSProperties> = {
     marginTop: 4,
   },
   mapContainer: {
-    height: 440,
     borderRadius: 16,
     overflow: 'hidden',
     border: '1px solid #ccc',

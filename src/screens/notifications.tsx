@@ -1,11 +1,15 @@
+// src/pages/AdminNotifications.tsx
 import React, { useState } from 'react';
 import { getFirebaseDB } from '../firebaseConfig';
 import { collection, getDocs } from 'firebase/firestore';
+import { getApp } from 'firebase/app';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 
 export default function AdminNotifications() {
   const [message, setMessage] = useState('');
-  const [target, setTarget] = useState('all');
+  const [target, setTarget] = useState<'all' | 'users' | 'drivers'>('all');
   const [showSuccess, setShowSuccess] = useState(false);
+  const [sending, setSending] = useState(false);
 
   const sendNotification = async () => {
     if (!message.trim()) {
@@ -14,56 +18,50 @@ export default function AdminNotifications() {
     }
 
     try {
-      const db = getFirebaseDB();
-      let tokens: string[] = [];
+      setSending(true);
 
-      // Fetch user tokens
+      const db = getFirebaseDB();
+      const tokens: string[] = [];
+
+      // Users
       if (target === 'all' || target === 'users') {
         const usersSnap = await getDocs(collection(db, 'users'));
         usersSnap.forEach((doc) => {
-          const data = doc.data();
-          if (data.expoPushToken) tokens.push(data.expoPushToken);
+          const t = doc.data()?.expoPushToken;
+          if (t) tokens.push(String(t));
         });
       }
 
-      // Fetch driver tokens
+      // Drivers
       if (target === 'all' || target === 'drivers') {
         const driversSnap = await getDocs(collection(db, 'drivers'));
         driversSnap.forEach((doc) => {
-          const data = doc.data();
-          if (data.expoPushToken) tokens.push(data.expoPushToken);
+          const t = doc.data()?.expoPushToken;
+          if (t) tokens.push(String(t));
         });
       }
 
-      if (tokens.length === 0) {
+      // Deduplicate + keep only Expo tokens
+      const unique = Array.from(new Set(tokens));
+      const expoTokens = unique.filter((t) => t.startsWith('ExponentPushToken['));
+
+      if (expoTokens.length === 0) {
         alert('No devices are registered for push notifications.');
+        setSending(false);
         return;
       }
 
-      // Send notifications in batches of 100
-      const chunks: string[][] = [];
-      for (let i = 0; i < tokens.length; i += 100) {
-        chunks.push(tokens.slice(i, i + 100));
-      }
+      // Call Cloud Function (CORS-safe, handles batching)
+      const app = getApp();
+      const functions = getFunctions(app);
+      const sendExpoPush = httpsCallable(functions, 'sendExpoPush');
 
-      for (const batch of chunks) {
-        await fetch('https://exp.host/--/api/v2/push/send', {
-          method: 'POST',
-          headers: {
-            Accept: 'application/json',
-            'Accept-Encoding': 'gzip, deflate',
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(
-            batch.map((token) => ({
-              to: token,
-              sound: 'default',
-              title: 'HILBU',
-              body: message,
-            }))
-          ),
-        });
-      }
+      await sendExpoPush({
+        tokens: expoTokens,
+        title: 'HILBU',
+        body: message,
+        data: { scope: target }
+      });
 
       setMessage('');
       setTarget('all');
@@ -72,6 +70,8 @@ export default function AdminNotifications() {
     } catch (error) {
       console.error('Error sending notification:', error);
       alert('Failed to send notification.');
+    } finally {
+      setSending(false);
     }
   };
 
@@ -91,8 +91,9 @@ export default function AdminNotifications() {
           <div style={styles.selectWrapper}>
             <select
               value={target}
-              onChange={(e) => setTarget(e.target.value)}
+              onChange={(e) => setTarget(e.target.value as 'all' | 'users' | 'drivers')}
               style={styles.select}
+              disabled={sending}
             >
               <option value="all">🌍 All Users & Drivers</option>
               <option value="users">👤 Only Users</option>
@@ -100,8 +101,12 @@ export default function AdminNotifications() {
             </select>
           </div>
 
-          <button style={styles.button} onClick={sendNotification}>
-            🚀 Send
+          <button
+            style={{ ...styles.button, opacity: sending ? 0.7 : 1 }}
+            onClick={sendNotification}
+            disabled={sending}
+          >
+            {sending ? 'Sending…' : '🚀 Send'}
           </button>
 
           {showSuccess && <div style={styles.success}>✅ Notification Sent!</div>}
@@ -164,7 +169,7 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 16,
     borderRadius: 10,
     backgroundColor: '#fff',
-    border: '1px solid #000',
+    border: '1px solid #000', // ← fixed quote here
     boxSizing: 'border-box',
   },
   button: {
@@ -184,6 +189,5 @@ const styles: Record<string, React.CSSProperties> = {
     padding: 10,
     borderRadius: 8,
     fontWeight: 'bold',
-    animation: 'fadeInOut 2s ease-in-out',
   },
 };
