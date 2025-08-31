@@ -1,15 +1,61 @@
-// src/pages/AdminNotifications.tsx
+// FILE: src/pages/AdminNotifications.tsx
 import React, { useState } from 'react';
-import { getFirebaseDB } from '../firebaseConfig';
 import { collection, getDocs } from 'firebase/firestore';
 import { getApp } from 'firebase/app';
 import { getFunctions, httpsCallable } from 'firebase/functions';
+import { getFirebaseDB } from '../firebaseConfig';
+
+type TargetScope = 'all' | 'users' | 'drivers';
 
 export default function AdminNotifications() {
   const [message, setMessage] = useState('');
-  const [target, setTarget] = useState<'all' | 'users' | 'drivers'>('all');
+  const [target, setTarget] = useState<TargetScope>('all');
   const [showSuccess, setShowSuccess] = useState(false);
   const [sending, setSending] = useState(false);
+
+  const isExpoToken = (t: string) =>
+    typeof t === 'string' &&
+    (t.startsWith('ExponentPushToken[') || t.startsWith('ExpoPushToken['));
+
+  const collectTokens = async (scope: TargetScope) => {
+    const db = getFirebaseDB();
+    const tokens: string[] = [];
+
+    // USERS
+    if (scope === 'all' || scope === 'users') {
+      const usersSnap = await getDocs(collection(db, 'users'));
+      usersSnap.forEach((d) => {
+        const t = d.data()?.expoPushToken ?? d.data()?.pushToken ?? d.data()?.token;
+        if (t && isExpoToken(String(t))) tokens.push(String(t));
+      });
+
+      // NEW: users_by_phone fallback
+      const usersByPhoneSnap = await getDocs(collection(db, 'users_by_phone'));
+      usersByPhoneSnap.forEach((d) => {
+        const t = d.data()?.expoPushToken ?? d.data()?.pushToken ?? d.data()?.token;
+        if (t && isExpoToken(String(t))) tokens.push(String(t));
+      });
+    }
+
+    // DRIVERS
+    if (scope === 'all' || scope === 'drivers') {
+      const driversSnap = await getDocs(collection(db, 'drivers'));
+      driversSnap.forEach((d) => {
+        const t = d.data()?.expoPushToken ?? d.data()?.pushToken ?? d.data()?.token;
+        if (t && isExpoToken(String(t))) tokens.push(String(t));
+      });
+
+      // NEW: drivers_by_phone fallback (your driver app writes here)
+      const driversByPhoneSnap = await getDocs(collection(db, 'drivers_by_phone'));
+      driversByPhoneSnap.forEach((d) => {
+        const t = d.data()?.expoPushToken ?? d.data()?.pushToken ?? d.data()?.token;
+        if (t && isExpoToken(String(t))) tokens.push(String(t));
+      });
+    }
+
+    // dedupe
+    return Array.from(new Set(tokens));
+  };
 
   const sendNotification = async () => {
     if (!message.trim()) {
@@ -20,38 +66,16 @@ export default function AdminNotifications() {
     try {
       setSending(true);
 
-      const db = getFirebaseDB();
-      const tokens: string[] = [];
-
-      // Users
-      if (target === 'all' || target === 'users') {
-        const usersSnap = await getDocs(collection(db, 'users'));
-        usersSnap.forEach((doc) => {
-          const t = doc.data()?.expoPushToken;
-          if (t) tokens.push(String(t));
-        });
-      }
-
-      // Drivers
-      if (target === 'all' || target === 'drivers') {
-        const driversSnap = await getDocs(collection(db, 'drivers'));
-        driversSnap.forEach((doc) => {
-          const t = doc.data()?.expoPushToken;
-          if (t) tokens.push(String(t));
-        });
-      }
-
-      // Deduplicate + keep only Expo tokens
-      const unique = Array.from(new Set(tokens));
-      const expoTokens = unique.filter((t) => t.startsWith('ExponentPushToken['));
-
+      const expoTokens = await collectTokens(target);
       if (expoTokens.length === 0) {
-        alert('No devices are registered for push notifications.');
+        alert(
+          'No valid Expo push tokens were found for the selected target.\n' +
+            'If you expected drivers to receive it, open the driver app once to register its push token.'
+        );
         setSending(false);
         return;
       }
 
-      // Call Cloud Function (CORS-safe, handles batching)
       const app = getApp();
       const functions = getFunctions(app);
       const sendExpoPush = httpsCallable(functions, 'sendExpoPush');
@@ -60,7 +84,7 @@ export default function AdminNotifications() {
         tokens: expoTokens,
         title: 'HILBU',
         body: message,
-        data: { scope: target }
+        data: { scope: target },
       });
 
       setMessage('');
@@ -91,7 +115,7 @@ export default function AdminNotifications() {
           <div style={styles.selectWrapper}>
             <select
               value={target}
-              onChange={(e) => setTarget(e.target.value as 'all' | 'users' | 'drivers')}
+              onChange={(e) => setTarget(e.target.value as TargetScope)}
               style={styles.select}
               disabled={sending}
             >
@@ -127,17 +151,8 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: 'center',
     boxSizing: 'border-box',
   },
-  container: {
-    width: '100%',
-    maxWidth: 600,
-    textAlign: 'center',
-  },
-  title: {
-    fontSize: 26,
-    fontWeight: 'bold',
-    color: '#000',
-    marginBottom: 24,
-  },
+  container: { width: '100%', maxWidth: 600, textAlign: 'center' },
+  title: { fontSize: 26, fontWeight: 'bold', color: '#000', marginBottom: 24 },
   card: {
     backgroundColor: '#FFDC00',
     borderRadius: 16,
@@ -160,16 +175,14 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#000',
     boxSizing: 'border-box',
   },
-  selectWrapper: {
-    width: '100%',
-  },
+  selectWrapper: { width: '100%' },
   select: {
     width: '100%',
     padding: 10,
     fontSize: 16,
     borderRadius: 10,
     backgroundColor: '#fff',
-    border: '1px solid #000', // ← fixed quote here
+    border: '1px solid #000',
     boxSizing: 'border-box',
   },
   button: {

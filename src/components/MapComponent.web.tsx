@@ -12,7 +12,6 @@ interface Coordinates {
   latitude: number;
   longitude: number;
 }
-
 interface MapComponentProps {
   location?: Coordinates;
   destination?: Coordinates;
@@ -20,14 +19,49 @@ interface MapComponentProps {
   showDrivers?: boolean;
 }
 
-const containerStyle = {
+const containerStyle: React.CSSProperties = {
   width: '100%',
   height: '100%',
   borderRadius: '12px',
-  border: '1px solid #ccc',
+  border: '1px solid #FFDC00', // HILBU theme
+  overflow: 'hidden',
 };
 
 const defaultCenter = { lat: 25.2048, lng: 55.2708 };
+
+// Read the browser (web) key from env (Vite / Next / Vercel)
+function readGoogleKey(): string {
+  const vite =
+    (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY) ||
+    (typeof import.meta !== 'undefined' && (import.meta as any).env?.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY);
+  const node =
+    (typeof process !== 'undefined' && (process as any).env?.VITE_GOOGLE_MAPS_API_KEY) ||
+    (typeof process !== 'undefined' && (process as any).env?.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY);
+  return vite || node || '';
+}
+
+// Load a PNG at its natural pixel size (prevents stretching)
+function buildIcon(url: string): Promise<google.maps.Icon> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const w = img.naturalWidth || 30;
+      const h = img.naturalHeight || 30;
+      resolve({
+        url,
+        scaledSize: new window.google.maps.Size(w, h),
+        anchor: new window.google.maps.Point(w / 2, h),
+      } as google.maps.Icon);
+    };
+    img.onerror = () => {
+      resolve({
+        url,
+        scaledSize: new window.google.maps.Size(30, 35),
+      } as google.maps.Icon);
+    };
+    img.src = url;
+  });
+}
 
 export default function MapComponent({
   location,
@@ -38,25 +72,31 @@ export default function MapComponent({
   const mapRef = useRef<google.maps.Map | null>(null);
   const [directions, setDirections] = useState<google.maps.DirectionsResult | null>(null);
   const [driverLocations, setDriverLocations] = useState<Coordinates[]>([]);
+  const [userCarIcon, setUserCarIcon] = useState<google.maps.Icon | undefined>(undefined);
+  const [towTruckIcon, setTowTruckIcon] = useState<google.maps.Icon | undefined>(undefined);
+
+  const apiKey = readGoogleKey();
 
   const { isLoaded } = useJsApiLoader({
-    googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '',
+    id: 'hilbu-admin-map',
+    googleMapsApiKey: apiKey,
     libraries: ['places'],
   });
 
-  const userCarIcon = useMemo(() => {
-    if (!isLoaded || !window.google) return undefined;
-    return {
-      url: '/MapCar.png',
-      scaledSize: new window.google.maps.Size(30, 35),
-    };
-  }, [isLoaded]);
-
-  const towTruckIcon = useMemo(() => {
-    if (!isLoaded || !window.google) return undefined;
-    return {
-      url: '/tow-truck.png',
-      scaledSize: new window.google.maps.Size(30, 35),
+  // Prepare marker icons (from /public)
+  useEffect(() => {
+    if (!isLoaded || !window.google) return;
+    let mounted = true;
+    (async () => {
+      const userIcon = await buildIcon('/MapCar.png');
+      const truckIcon = await buildIcon('/tow-truck.png');
+      if (mounted) {
+        setUserCarIcon(userIcon);
+        setTowTruckIcon(truckIcon);
+      }
+    })();
+    return () => {
+      mounted = false;
     };
   }, [isLoaded]);
 
@@ -66,27 +106,25 @@ export default function MapComponent({
     return defaultCenter;
   }, [location, towTruck]);
 
-  const onLoad = useCallback((map: google.maps.Map) => {
-    mapRef.current = map;
-    const bounds = new window.google.maps.LatLngBounds();
-    if (location) bounds.extend({ lat: location.latitude, lng: location.longitude });
-    if (destination) bounds.extend({ lat: destination.latitude, lng: destination.longitude });
-    if (towTruck) bounds.extend({ lat: towTruck.latitude, lng: towTruck.longitude });
-    driverLocations.forEach((d) => bounds.extend({ lat: d.latitude, lng: d.longitude }));
-    if (!bounds.isEmpty()) map.fitBounds(bounds);
-  }, [location, destination, towTruck, driverLocations]);
+  const onLoad = useCallback(
+    (map: google.maps.Map) => {
+      mapRef.current = map;
+    },
+    []
+  );
 
   const onUnmount = useCallback(() => {
     mapRef.current = null;
   }, []);
 
+  // Live drivers (optional)
   useEffect(() => {
     if (!showDrivers) return;
     const driverQuery = query(collection(firestore, 'drivers'), where('isOnline', '==', true));
     const unsubscribe = onSnapshot(driverQuery, (snapshot) => {
       const drivers: Coordinates[] = [];
       snapshot.forEach((doc) => {
-        const data = doc.data();
+        const data = doc.data() as any;
         if (data.location?.latitude && data.location?.longitude) {
           drivers.push({
             latitude: data.location.latitude,
@@ -99,28 +137,53 @@ export default function MapComponent({
     return () => unsubscribe();
   }, [showDrivers]);
 
+  // Compute route on client (Maps JS)
   useEffect(() => {
-    if (location && destination && isLoaded) {
-      const directionsService = new google.maps.DirectionsService();
-      directionsService.route(
-        {
-          origin: { lat: location.latitude, lng: location.longitude },
-          destination: { lat: destination.latitude, lng: destination.longitude },
-          travelMode: google.maps.TravelMode.DRIVING,
-        },
-        (result, status) => {
-          if (status === google.maps.DirectionsStatus.OK && result) {
-            setDirections(result);
-          } else {
-            console.error('Directions request failed due to ', status);
-          }
+    if (!location || !destination || !isLoaded) return;
+    const svc = new google.maps.DirectionsService();
+    svc.route(
+      {
+        origin: { lat: location.latitude, lng: location.longitude },
+        destination: { lat: destination.latitude, lng: destination.longitude },
+        travelMode: google.maps.TravelMode.DRIVING,
+      },
+      (result, status) => {
+        if (status === google.maps.DirectionsStatus.OK && result) {
+          setDirections(result);
+        } else {
+          setDirections(null);
+          // console.warn('Directions failed:', status);
         }
-      );
-    }
+      }
+    );
   }, [location, destination, isLoaded]);
 
+  // Auto-fit whenever markers/routes change
+  useEffect(() => {
+    if (!mapRef.current || !window.google || !isLoaded) return;
+    const bounds = new window.google.maps.LatLngBounds();
+    if (location) bounds.extend({ lat: location.latitude, lng: location.longitude });
+    if (destination) bounds.extend({ lat: destination.latitude, lng: destination.longitude });
+    if (towTruck) bounds.extend({ lat: towTruck.latitude, lng: towTruck.longitude });
+    driverLocations.forEach((d) => bounds.extend({ lat: d.latitude, lng: d.longitude }));
+    if (!bounds.isEmpty()) {
+      mapRef.current.fitBounds(bounds, 60);
+    } else {
+      mapRef.current.setCenter(defaultCenter);
+      mapRef.current.setZoom(12);
+    }
+  }, [isLoaded, location, destination, towTruck, driverLocations]);
+
+  if (!apiKey) {
+    return (
+      <div style={{ ...containerStyle, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        Missing Google Maps key. Set <code>VITE_GOOGLE_MAPS_API_KEY</code> on Vercel.
+      </div>
+    );
+  }
+
   if (!isLoaded) {
-    return <div style={{ textAlign: 'center', padding: 20 }}>Loading map...</div>;
+    return <div style={{ textAlign: 'center', padding: 20 }}>Loading map…</div>;
   }
 
   return (
@@ -130,6 +193,13 @@ export default function MapComponent({
       zoom={14}
       onLoad={onLoad}
       onUnmount={onUnmount}
+      options={{
+        gestureHandling: 'greedy',
+        mapTypeControl: false,
+        streetViewControl: false,
+        fullscreenControl: false,
+        zoomControl: true,
+      }}
     >
       {location && (
         <Marker position={{ lat: location.latitude, lng: location.longitude }} icon={userCarIcon} />

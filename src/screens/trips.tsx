@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { collection, getDocs } from 'firebase/firestore';
-import { firestore } from '../firebaseConfig';
+import { getFirebaseDB } from '../firebaseConfig';
 
 interface TripData {
   id: string;
@@ -18,24 +18,53 @@ export default function AdminTrips() {
 
   useEffect(() => {
     const fetchTrips = async () => {
+      const db = getFirebaseDB(); // ✅ use the same DB getter as other admin pages
       try {
-        const tripsSnap = await getDocs(collection(firestore, 'trip_history_driver'));
+        const tripsSnap = await getDocs(collection(db, 'trip_history_driver'));
 
-        const tripsData: TripData[] = tripsSnap.docs.map((doc) => {
-          const data = doc.data();
-          const date =
-            data.timestamp?.toDate
-              ? data.timestamp.toDate().toLocaleDateString()
-              : new Date(data.timestamp || Date.now()).toLocaleDateString();
+        const tripsData: TripData[] = tripsSnap.docs.map((docSnap) => {
+          const data: any = docSnap.data();
+
+          // timestamp: can be Firestore Timestamp, ISO string, or Date
+          let dt: Date;
+          if (data?.timestamp?.toDate) {
+            dt = data.timestamp.toDate();
+          } else if (typeof data?.timestamp === 'string' || typeof data?.timestamp === 'number') {
+            dt = new Date(data.timestamp);
+          } else {
+            dt = new Date();
+          }
+
+          // amount: can be number or string like "AED 120.50"
+          const amountNum =
+            typeof data?.amount === 'number'
+              ? data.amount
+              : parseFloat(String(data?.amount ?? '0').replace(/[^\d.]/g, '')) || 0;
+
+          // pickup / dropoff were saved as objects { address, coords }
+          const pickupStr =
+            typeof data?.pickup === 'string'
+              ? data.pickup
+              : data?.pickup?.address || 'N/A';
+          const dropoffStr =
+            typeof data?.dropoff === 'string'
+              ? data.dropoff
+              : data?.dropoff?.address || 'N/A';
 
           return {
-            id: doc.id,
-            driver: data.driverPhone || 'Unknown Driver',
-            rider: data.userPhone || 'Unknown User',
-            date,
-            amount: parseFloat(data.amount) || 0,
-            pickup: data.pickup || 'N/A',
-            dropoff: data.dropoff || 'N/A',
+            id: docSnap.id,
+            driver: data?.driverPhone || 'Unknown Driver',
+            rider: data?.userPhone || 'Unknown User',
+            date: dt.toLocaleDateString('en-GB', {
+              year: 'numeric',
+              month: 'short',
+              day: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit',
+            }),
+            amount: amountNum,
+            pickup: pickupStr,
+            dropoff: dropoffStr,
           };
         });
 
@@ -67,8 +96,8 @@ export default function AdminTrips() {
           <p style={styles.noData}>No trips found.</p>
         ) : (
           trips.map((item) => {
-            const commission = item.amount * 0.2;
-            const earnings = item.amount - commission;
+            const commission = item.amount * 0.2; // HILBU 20%
+            const earnings = item.amount - commission; // ✅ admin-only final earnings
 
             return (
               <div key={item.id} style={styles.card}>
@@ -115,6 +144,7 @@ const styles: { [key: string]: React.CSSProperties } = {
     padding: 20,
     borderRadius: 16,
     boxShadow: '0 2px 6px rgba(0,0,0,0.1)',
+    border: '1px solid #000',
   },
   label: {
     fontSize: 16,
@@ -130,6 +160,7 @@ const styles: { [key: string]: React.CSSProperties } = {
   valueGreen: {
     color: '#006400',
     fontWeight: 'normal',
+    marginLeft: 6,
   },
   loadingContainer: {
     display: 'flex',

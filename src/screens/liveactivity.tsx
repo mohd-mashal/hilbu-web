@@ -68,24 +68,28 @@ export default function LiveActivity() {
 
   const userIcon = useMemo(() => {
     if (!isLoaded || !window.google) return undefined;
-    return { url: '/MapCar.png', scaledSize: new window.google.maps.Size(28, 32) };
+    return { url: '/MapCar.png', scaledSize: new window.google.maps.Size(30, 35) };
   }, [isLoaded]);
 
   const driverIcon = useMemo(() => {
     if (!isLoaded || !window.google) return undefined;
-    return { url: '/tow-truck.png', scaledSize: new window.google.maps.Size(28, 32) };
+    return { url: '/tow-truck.png', scaledSize: new window.google.maps.Size(30, 35) };
   }, [isLoaded]);
 
   const fitAll = useCallback(() => {
     if (!mapRef.current || !window.google) return;
     const bounds = new window.google.maps.LatLngBounds();
-    userLocations.forEach((u) => u.location && bounds.extend({ lat: u.location.latitude, lng: u.location.longitude }));
-    driverLocations.forEach((d) => d.location && bounds.extend({ lat: d.location.latitude, lng: d.location.longitude }));
+    userLocations.forEach(
+      (u) => u.location && bounds.extend({ lat: u.location.latitude, lng: u.location.longitude })
+    );
+    driverLocations.forEach(
+      (d) => d.location && bounds.extend({ lat: d.location.latitude, lng: d.location.longitude })
+    );
     if (bounds.isEmpty()) {
       mapRef.current.setCenter(defaultCenter);
       mapRef.current.setZoom(11);
     } else {
-      mapRef.current.fitBounds(bounds, 60);
+      mapRef.current.fitBounds(bounds, 60); // auto-fit (zooms out/in to include all markers)
     }
   }, [userLocations, driverLocations]);
 
@@ -139,7 +143,7 @@ export default function LiveActivity() {
 
   return (
     <div style={styles.container}>
-      <h2 style={styles.title}>Live Driver & User Map</h2>
+      <h2 style={styles.title}>Live Driver &amp; User Map</h2>
 
       <div style={styles.mapShell}>
         {!isLoaded ? (
@@ -154,12 +158,16 @@ export default function LiveActivity() {
               mapTypeControl: false,
               streetViewControl: false,
               fullscreenControl: false,
+              zoomControl: true, // ✅ show +/- zoom buttons
+              // zoomControlOptions: { position: google.maps.ControlPosition.RIGHT_BOTTOM }, // (optional)
             }}
             onLoad={(map) => {
               mapRef.current = map;
-              fitAll();
+              fitAll(); // keep auto-zoom on initial load
             }}
-            onUnmount={() => { mapRef.current = null; }}
+            onUnmount={() => {
+              mapRef.current = null;
+            }}
           >
             {userLocations.map(
               (u) =>
@@ -183,6 +191,10 @@ export default function LiveActivity() {
             )}
           </GoogleMap>
         )}
+        {/* Optional manual recenter button (keeps UI minimal). Remove if not needed. */}
+        <button style={styles.fitButton} onClick={fitAll} title="Recenter to show all">
+          Fit All
+        </button>
       </div>
 
       <h2 style={styles.title}>Live Recovery Jobs</h2>
@@ -192,8 +204,8 @@ export default function LiveActivity() {
         jobs.map((job) => (
           <div key={job.id} style={styles.jobCard}>
             <p style={styles.jobText}>
-              🚗 {job.pickupAddress || toText(job.pickup)} → {job.dropoffAddress || toText(job.dropoff)} | {job.status || '—'}{' '}
-              {job.driverPhone ? `by ${job.driverPhone}` : '(unassigned)'}
+              🚗 {job.pickupAddress || toText(job.pickup)} → {job.dropoffAddress || toText(job.dropoff)} |{' '}
+              {job.status || '—'} {job.driverPhone ? `by ${job.driverPhone}` : '(unassigned)'}
             </p>
           </div>
         ))
@@ -252,6 +264,20 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: 'center',
     justifyContent: 'center',
     fontWeight: 600,
+  },
+  fitButton: {
+    position: 'absolute',
+    right: 12,
+    top: 12,
+    zIndex: 2,
+    padding: '8px 12px',
+    borderRadius: 8,
+    border: '1px solid #ddd',
+    background: '#FFDC00',
+    color: '#000',
+    fontWeight: 600,
+    cursor: 'pointer',
+    boxShadow: '0 2px 6px rgba(0,0,0,0.12)',
   },
   jobCard: {
     backgroundColor: '#f5f5f5',
