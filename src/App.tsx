@@ -2,9 +2,21 @@ import './index.css';
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import {
-  Home, Users as UsersIcon, Truck, List, BarChart2, Bell,
-  Activity, DollarSign, MessageCircle as MessageCircleIcon,
-  LogOut, Menu, X, Lock, Mail,
+  Home,
+  Users as UsersIcon,
+  Truck,
+  List,
+  BarChart2,
+  Bell,
+  Activity,
+  DollarSign,
+  MessageCircle as MessageCircleIcon,
+  LogOut,
+  Menu,
+  X,
+  Lock,
+  Mail,
+  Percent as PercentIcon,
 } from 'lucide-react';
 
 import Dashboard from './screens/dashboard';
@@ -16,9 +28,14 @@ import Notifications from './screens/notifications';
 import LiveActivity from './screens/liveactivity';
 import Payouts from './screens/payouts';
 import SupportMessages from './screens/support';
+import PromoCodes from './screens/PromoCodes';
 
 import Privacy from './privacy';
 import Terms from './terms';
+
+// Store URLs
+const IOS_URL = 'https://apps.apple.com/us/app/hilbu/id6751604180?platform=iphone';
+const ANDROID_URL = 'https://play.google.com/store/apps/details?id=com.hilbu.recovery';
 
 // Load admin credentials from environment
 const adminEmails = (import.meta.env.VITE_ADMIN_EMAILS || '').split(',');
@@ -30,8 +47,76 @@ const ADMINS = adminEmails.map((email: string, i: number) => ({
 }));
 
 type ScreenKey =
-  | 'dashboard' | 'users' | 'drivers' | 'trips'
-  | 'reports' | 'notifications' | 'liveactivity' | 'payouts' | 'support';
+  | 'dashboard'
+  | 'users'
+  | 'drivers'
+  | 'trips'
+  | 'reports'
+  | 'notifications'
+  | 'liveactivity'
+  | 'payouts'
+  | 'support'
+  | 'promocodes';
+
+/* ====== Badge with hidden QR-on-hover (desktop only) ====== */
+function StoreBadgeWithQR({
+  imgSrc,
+  alt,
+  href,
+  label,
+}: { imgSrc: string; alt: string; href: string; label: 'iPhone' | 'Android' }) {
+  const [show, setShow] = useState(false);
+  const [allowHover, setAllowHover] = useState(true);
+
+  useEffect(() => {
+    try {
+      const mq = window.matchMedia && window.matchMedia('(hover: hover)');
+      setAllowHover(!!mq?.matches);
+    } catch {
+      setAllowHover(true);
+    }
+  }, []);
+
+  // Bigger QR + strong error correction (H) + margin so cameras can lock on,
+  // and keep the center logo small (~18% of QR width)
+  const QR_SIZE = 300;
+  const LOGO_SIZE = 54; // ~18% of 300
+  const qrUrl =
+    `https://api.qrserver.com/v1/create-qr-code/?` +
+    `size=${QR_SIZE}x${QR_SIZE}&margin=8&ecc=H&format=png&color=000000&bgcolor=FFFFFF&data=${encodeURIComponent(href)}`;
+
+  return (
+    <div
+      style={styles.storeBadgeWrap}
+      onMouseEnter={() => allowHover && setShow(true)}
+      onMouseLeave={() => allowHover && setShow(false)}
+    >
+      <a href={href} target="_blank" rel="noopener noreferrer" title={alt} style={styles.storeBadgeLink}>
+        <img src={imgSrc} alt={alt} style={styles.storeMiniIconActive} />
+      </a>
+
+      {allowHover && show && (
+        <div style={styles.qrPopover}>
+          <div style={styles.qrBox}>
+            <div style={{ ...styles.qrCanvasWrap, width: QR_SIZE, height: QR_SIZE }}>
+              <img src={qrUrl} alt={`${label} QR`} style={{ ...styles.qrImg, width: QR_SIZE, height: QR_SIZE }} />
+              <div
+                style={{
+                  ...styles.qrLogoWrap,
+                  width: LOGO_SIZE,
+                  height: LOGO_SIZE,
+                }}
+              >
+                <img src="/InvoiceLogo.png" alt="HILBU" style={{ ...styles.qrLogo, width: LOGO_SIZE - 6, height: LOGO_SIZE - 6 }} />
+              </div>
+            </div>
+            <div style={styles.qrLabelSmall}>{label}</div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 const App = () => {
   const [authenticated, setAuthenticated] = useState(false);
@@ -41,7 +126,10 @@ const App = () => {
   const [active, setActive] = useState<ScreenKey>('dashboard');
   const [collapsed, setCollapsed] = useState(false);
 
-  const screens: Record<ScreenKey, { label: string; icon: any; component: () => React.ReactElement }> = {
+  const screens: Record<
+    ScreenKey,
+    { label: string; icon: any; component: () => React.ReactElement }
+  > = {
     dashboard: { label: 'Dashboard', icon: Home, component: () => <Dashboard setActiveTab={setActive} /> },
     users: { label: 'Users', icon: UsersIcon, component: () => <Users /> },
     drivers: { label: 'Drivers', icon: Truck, component: () => <Drivers /> },
@@ -51,6 +139,7 @@ const App = () => {
     liveactivity: { label: 'Live Activity', icon: Activity, component: () => <LiveActivity /> },
     payouts: { label: 'Payouts', icon: DollarSign, component: () => <Payouts /> },
     support: { label: 'Support', icon: MessageCircleIcon, component: () => <SupportMessages /> },
+    promocodes: { label: 'Promo Codes', icon: PercentIcon, component: () => <PromoCodes /> },
   };
 
   const ActiveScreen = screens[active].component;
@@ -79,7 +168,7 @@ const App = () => {
 
     if (match) {
       localStorage.setItem('admin-auth', 'true');
-      localStorage.setItem('admin-email', email.trim()); // Always save email
+      localStorage.setItem('admin-email', email.trim());
       if (rememberMe) {
         localStorage.setItem('admin-remember', 'true');
       } else {
@@ -150,9 +239,20 @@ const App = () => {
 
         <p style={styles.footer}>Powered by HILBU Technologies</p>
 
+        {/* Store badges (click to open; QR appears on desktop hover only) */}
         <div style={styles.storeRow}>
-          <img src="/appstore.png" alt="App Store" style={styles.storeMiniIcon} title="Coming soon on App Store" />
-          <img src="/playstore.png" alt="Google Play" style={styles.storeMiniIcon} title="Coming soon on Google Play" />
+          <StoreBadgeWithQR
+            imgSrc="/appstore.png"
+            alt="Download on the App Store"
+            href={IOS_URL}
+            label="iPhone"
+          />
+          <StoreBadgeWithQR
+            imgSrc="/playstore.png"
+            alt="Get it on Google Play"
+            href={ANDROID_URL}
+            label="Android"
+          />
         </div>
       </div>
     </div>
@@ -412,11 +512,70 @@ const styles: Record<string, React.CSSProperties> = {
     justifyContent: 'center',
     gap: 10,
     marginTop: 10,
+    position: 'relative',
   },
-  storeMiniIcon: {
-    height: 30,
-    opacity: 0.5,
-    cursor: 'not-allowed',
+  storeMiniIconActive: {
+    height: 36,
+    opacity: 1,
+    cursor: 'pointer',
     borderRadius: 6,
+    transition: 'transform 0.12s ease',
+  },
+  storeBadgeLink: {
+    display: 'inline-flex',
+    alignItems: 'center',
+  },
+  storeBadgeWrap: {
+    position: 'relative',
+    display: 'inline-flex',
+    alignItems: 'center',
+  },
+  // popover positioned higher to fit the larger QR
+  qrPopover: {
+    position: 'absolute',
+    top: -360,
+    left: '50%',
+    transform: 'translateX(-50%)',
+    zIndex: 50,
+    pointerEvents: 'none',
+  } as any,
+  qrBox: {
+    background: '#fff',
+    border: '2px solid #FFDC00',
+    borderRadius: 12,
+    boxShadow: '0 10px 24px rgba(0,0,0,0.25)',
+    padding: 10,
+    textAlign: 'center',
+  },
+  qrCanvasWrap: {
+    position: 'relative',
+    width: 300,
+    height: 300,
+  },
+  qrImg: {
+    width: 300,
+    height: 300,
+    display: 'block',
+  },
+  qrLogoWrap: {
+    position: 'absolute',
+    top: '50%',
+    left: '50%',
+    transform: 'translate(-50%, -50%)',
+    borderRadius: 12,
+    background: '#fff',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    boxShadow: '0 0 0 3px #fff',
+  },
+  qrLogo: {
+    objectFit: 'contain',
+  },
+  qrLabelSmall: {
+    marginTop: 6,
+    fontSize: 12,
+    fontWeight: 600,
+    color: '#000',
   },
 };

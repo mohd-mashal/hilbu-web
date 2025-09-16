@@ -13,6 +13,11 @@ export default function AdminNotifications() {
   const [showSuccess, setShowSuccess] = useState(false);
   const [sending, setSending] = useState(false);
 
+  // 🔽 Advanced (optional) deep-link for driver jobs
+  const [enableTapLink, setEnableTapLink] = useState(false);
+  const [jobId, setJobId] = useState('');
+  const [targetRoute, setTargetRoute] = useState('/driver/(tabs)/recovery-job-details');
+
   const isExpoToken = (t: string) =>
     typeof t === 'string' &&
     (t.startsWith('ExponentPushToken[') || t.startsWith('ExpoPushToken['));
@@ -29,7 +34,7 @@ export default function AdminNotifications() {
         if (t && isExpoToken(String(t))) tokens.push(String(t));
       });
 
-      // NEW: users_by_phone fallback
+      // Fallback: users_by_phone
       const usersByPhoneSnap = await getDocs(collection(db, 'users_by_phone'));
       usersByPhoneSnap.forEach((d) => {
         const t = d.data()?.expoPushToken ?? d.data()?.pushToken ?? d.data()?.token;
@@ -45,7 +50,7 @@ export default function AdminNotifications() {
         if (t && isExpoToken(String(t))) tokens.push(String(t));
       });
 
-      // NEW: drivers_by_phone fallback (your driver app writes here)
+      // Fallback: drivers_by_phone
       const driversByPhoneSnap = await getDocs(collection(db, 'drivers_by_phone'));
       driversByPhoneSnap.forEach((d) => {
         const t = d.data()?.expoPushToken ?? d.data()?.pushToken ?? d.data()?.token;
@@ -53,7 +58,7 @@ export default function AdminNotifications() {
       });
     }
 
-    // dedupe
+    // de-dupe
     return Array.from(new Set(tokens));
   };
 
@@ -61,6 +66,20 @@ export default function AdminNotifications() {
     if (!message.trim()) {
       alert('Message cannot be empty.');
       return;
+    }
+
+    // If admin wants tap-to-open, require jobId (and ideally targeting drivers)
+    if (enableTapLink) {
+      if (!jobId.trim()) {
+        alert('Enter a Job ID to include tap-to-open.');
+        return;
+      }
+      if (target === 'users') {
+        const cont = confirm(
+          'You enabled tap-to-open for a DRIVER route but selected "Only Users". Continue?'
+        );
+        if (!cont) return;
+      }
     }
 
     try {
@@ -76,19 +95,38 @@ export default function AdminNotifications() {
         return;
       }
 
+      // Build standardized data payload (so taps open correctly on device)
+      const data: Record<string, any> = { scope: target };
+
+      if (enableTapLink) {
+        // Standardized keys used by the app’s notification handlers
+        data.role = 'driver';
+        data.type = 'driver_job';
+        data.targetRoute = targetRoute || '/driver/(tabs)/recovery-job-details';
+        data.params = { jobId: jobId.trim() };
+      }
+
       const app = getApp();
       const functions = getFunctions(app);
       const sendExpoPush = httpsCallable(functions, 'sendExpoPush');
 
+      // Send (Cloud Function should handle batching)
       await sendExpoPush({
         tokens: expoTokens,
         title: 'HILBU',
         body: message,
-        data: { scope: target },
+        data,
+        channelId: 'default',
+        priority: 'high',
       });
 
+      // Reset
       setMessage('');
       setTarget('all');
+      setEnableTapLink(false);
+      setJobId('');
+      setTargetRoute('/driver/(tabs)/recovery-job-details');
+
       setShowSuccess(true);
       setTimeout(() => setShowSuccess(false), 2000);
     } catch (error) {
@@ -123,6 +161,51 @@ export default function AdminNotifications() {
               <option value="users">👤 Only Users</option>
               <option value="drivers">🚗 Only Drivers</option>
             </select>
+          </div>
+
+          {/* Advanced deep-link options for driver jobs */}
+          <div style={styles.advancedBox}>
+            <label style={styles.checkboxRow}>
+              <input
+                type="checkbox"
+                checked={enableTapLink}
+                onChange={(e) => setEnableTapLink(e.target.checked)}
+                disabled={sending}
+              />
+              <span style={styles.checkboxLabel}>
+                Include tap-to-open (driver job deep-link)
+              </span>
+            </label>
+
+            <div style={{ display: enableTapLink ? 'block' : 'none' }}>
+              <div style={styles.inlineRow}>
+                <div style={styles.inlineCol}>
+                  <label style={styles.inlineLabel}>Job ID</label>
+                  <input
+                    value={jobId}
+                    onChange={(e) => setJobId(e.target.value)}
+                    placeholder="e.g. abc123"
+                    style={styles.textInput}
+                    disabled={sending}
+                  />
+                </div>
+                <div style={styles.inlineCol}>
+                  <label style={styles.inlineLabel}>Target Route</label>
+                  <input
+                    value={targetRoute}
+                    onChange={(e) => setTargetRoute(e.target.value)}
+                    placeholder="/driver/(tabs)/recovery-job-details"
+                    style={styles.textInput}
+                    disabled={sending}
+                  />
+                </div>
+              </div>
+              <div style={styles.hint}>
+                This sets: <code>role: "driver"</code>, <code>type: "driver_job"</code>,{' '}
+                <code>targetRoute</code>, and <code>params: {"{ jobId }"}</code> so taps open the
+                driver’s job screen even when the app is closed.
+              </div>
+            </div>
           </div>
 
           <button
@@ -185,6 +268,31 @@ const styles: Record<string, React.CSSProperties> = {
     border: '1px solid #000',
     boxSizing: 'border-box',
   },
+
+  // Advanced box
+  advancedBox: {
+    backgroundColor: '#fff',
+    border: '1px solid #000',
+    borderRadius: 12,
+    padding: 12,
+    textAlign: 'left',
+  },
+  checkboxRow: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 },
+  checkboxLabel: { color: '#000', fontWeight: 600 },
+  inlineRow: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 },
+  inlineCol: { display: 'flex', flexDirection: 'column', gap: 6 },
+  inlineLabel: { fontSize: 13, fontWeight: 600, color: '#000' },
+  textInput: {
+    width: '100%',
+    padding: 10,
+    fontSize: 14,
+    borderRadius: 10,
+    backgroundColor: '#fff',
+    border: '1px solid #000',
+    boxSizing: 'border-box',
+  },
+  hint: { marginTop: 10, fontSize: 12, color: '#222' },
+
   button: {
     width: '100%',
     backgroundColor: '#000',
