@@ -1,4 +1,4 @@
-// FILE: src/screens/payouts.tsx  (or AdminPayouts.tsx)
+// FILE: src/screens/payouts.tsx  (AdminPayouts.tsx)
 import React, { useEffect, useMemo, useState } from 'react';
 import { getFirebaseDB } from '../firebaseConfig';
 import {
@@ -8,17 +8,36 @@ import {
   doc,
   query,
   orderBy,
+  getDoc,
+  addDoc,
+  serverTimestamp,
 } from 'firebase/firestore';
+
+// If you have a shared notifications util in web, import it.
+// Otherwise these no-ops will safely skip push without breaking UI.
+let sendPushNotificationToUser: undefined | ((
+  identifier: string,
+  title: string,
+  message: string
+) => Promise<void>);
+try {
+  // Adjust path if your admin project structure differs
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  sendPushNotificationToUser = require('../utils/notifications')?.sendPushNotificationToUser;
+} catch (_) {
+  sendPushNotificationToUser = undefined;
+}
 
 interface Payout {
   id: string;
+  driverId?: string;
   accountName?: string;
   bankName?: string;
   accountNumber?: string;
   iban?: string;
-  amount?: number;      // NET to driver (80%)
-  status?: string;      // 'pending' | 'approved'
-  timestamp?: string;   // ISO or server timestamp
+  amount?: number; // NET to driver (80%)
+  status?: 'pending' | 'approved' | 'rejected';
+  timestamp?: string; // ISO or server timestamp
 }
 
 const COMMISSION = 0.20;
@@ -37,12 +56,11 @@ export default function AdminPayouts() {
       (snapshot) => {
         const data: Payout[] = snapshot.docs.map((d) => {
           const raw: any = d.data();
-          // normalize to ISO string if serverTimestamp
           const ts =
             typeof raw.timestamp === 'string'
               ? raw.timestamp
               : raw.timestamp?.toDate?.()?.toISOString?.() || new Date().toISOString();
-        return { id: d.id, ...raw, timestamp: ts } as Payout;
+          return { id: d.id, ...raw, timestamp: ts } as Payout;
         });
         setRequests(data);
         setLoading(false);
@@ -56,14 +74,87 @@ export default function AdminPayouts() {
     return () => unsubscribe();
   }, [db]);
 
+  // Approve payout: mark approved, log notification, try push to driver
   const approve = async (id: string) => {
     try {
-      await updateDoc(doc(db, 'payout_requests', id), { status: 'approved' });
+      const ref = doc(db, 'payout_requests', id);
+      const snap = await getDoc(ref);
+      if (!snap.exists()) throw new Error('Missing request');
+      const req = snap.data() as any;
+
+      await updateDoc(ref, { status: 'approved' });
+
+      // Optional: record an admin-side transfer log
+      await addDoc(collection(db, 'transfers'), {
+        payoutRequestId: id,
+        driverId: req.driverId || '',
+        amount: Number(req.amount || 0),
+        status: 'approved',
+        approvedAt: serverTimestamp(),
+      }).catch(() => {});
+
+      // Add a notification document (for audit/UI)
+      await addDoc(collection(db, 'notifications'), {
+        type: 'payout_approved',
+        title: 'Payout Approved',
+        message: `Your payout of AED ${Number(req.amount || 0).toFixed(2)} has been approved.`,
+        audience: req.driverId || 'driver',
+        createdAt: serverTimestamp(),
+      }).catch(() => {});
+
+      // Try to push to the driver (look up driver's identifier if needed)
+      if (sendPushNotificationToUser) {
+        // Use driverId directly if your notification util accepts it (email/phone/id)
+        try {
+          await sendPushNotificationToUser(
+            req.driverId || '',
+            'Payout Approved',
+            `✅ AED ${Number(req.amount || 0).toFixed(2)} has been approved.`
+          );
+        } catch (_) {}
+      }
+
       setRequests((prev) => prev.map((r) => (r.id === id ? { ...r, status: 'approved' } : r)));
       alert('✅ Payout Approved');
     } catch (error) {
       console.error('Error approving payout:', error);
       alert('❌ Failed to approve payout. Try again.');
+    }
+  };
+
+  // (Optional) Reject payout if you need it later
+  const reject = async (id: string, reason = 'Not eligible') => {
+    try {
+      const ref = doc(db, 'payout_requests', id);
+      const snap = await getDoc(ref);
+      if (!snap.exists()) throw new Error('Missing request');
+      const req = snap.data() as any;
+
+      await updateDoc(ref, { status: 'rejected', reason });
+
+      await addDoc(collection(db, 'notifications'), {
+        type: 'payout_rejected',
+        title: 'Payout Rejected',
+        message: `Your payout request was rejected. Reason: ${reason}`,
+        audience: req.driverId || 'driver',
+        createdAt: serverTimestamp(),
+      }).catch(() => {});
+
+      if (sendPushNotificationToUser) {
+        try {
+          await sendPushNotificationToUser(
+            req.driverId || '',
+            'Payout Rejected',
+            `❌ Your payout request was rejected. Reason: ${reason}`
+          );
+        } catch (_) {}
+      }
+
+      setRequests((prev) => prev.map((r) => (r.id === id ? { ...r, status: 'rejected' } : r)));
+      alert('⚠️ Payout Rejected');
+    } catch (error) {
+      console.error('Error rejecting payout:', error);
+      alert('❌ Failed to reject payout. Try again.');
     }
   };
 
@@ -100,7 +191,7 @@ export default function AdminPayouts() {
       <h1 style={styles.title}>💸 Payout Requests</h1>
 
       <div style={styles.messageBox}>
-        <p style={styles.warning}>⚠️ Minimum payout request must be AED 100.</p>
+        <p style={styles.warning}>⚠️ Minimum payout request must be AED 100 (net to driver).</p>
       </div>
 
       <div style={styles.totalsBox}>
@@ -111,8 +202,8 @@ export default function AdminPayouts() {
 
       <div style={styles.list}>
         {requests.map((item) => {
-          const net = Number(item.amount) || 0;         // driver's payout (80%)
-          const gross = net / PAYOUT_RATE;              // derived gross
+          const net = Number(item.amount) || 0; // driver's payout (80%)
+          const gross = net / PAYOUT_RATE; // derived gross
           const commission = gross * COMMISSION;
           const when = item.timestamp
             ? new Date(item.timestamp).toLocaleString('en-GB', {
@@ -127,11 +218,12 @@ export default function AdminPayouts() {
           return (
             <div key={item.id} style={styles.card}>
               <p style={styles.row}><strong>📅 Requested:</strong> {when || '—'}</p>
+              <p style={styles.row}><strong>👤 Driver:</strong> {item.driverId || '—'}</p>
               <p style={styles.row}><strong>👤 Account Name:</strong> {item.accountName || 'N/A'}</p>
               <p style={styles.row}><strong>🏦 Bank:</strong> {item.bankName || 'N/A'} - {item.accountNumber || 'N/A'}</p>
               <p style={styles.row}><strong>IBAN:</strong> {item.iban || 'N/A'}</p>
 
-              {/* Net/gross breakdown */}
+              {/* Net/gross breakdown (admin-only) */}
               <p style={styles.row}><strong>💰 Requested (Net to Driver):</strong> AED {net.toFixed(2)}</p>
               <p style={styles.row}><strong>🧾 Gross Equivalent:</strong> AED {gross.toFixed(2)}</p>
               <p style={styles.row}><strong>💼 HILBU Commission (20%):</strong> AED {commission.toFixed(2)}</p>
@@ -139,16 +231,31 @@ export default function AdminPayouts() {
               <p
                 style={{
                   ...styles.status,
-                  color: item.status === 'approved' ? 'green' : '#cc9900',
+                  color:
+                    item.status === 'approved'
+                      ? 'green'
+                      : item.status === 'rejected'
+                      ? '#cc0000'
+                      : '#cc9900',
                 }}
               >
-                {item.status === 'approved' ? '✅ Approved' : '🕓 Pending Approval'}
+                {item.status === 'approved'
+                  ? '✅ Approved'
+                  : item.status === 'rejected'
+                  ? '❌ Rejected'
+                  : '🕓 Pending Approval'}
               </p>
 
-              {item.status !== 'approved' && (
-                <button style={styles.button} onClick={() => approve(item.id)}>
-                  Approve Payout
-                </button>
+              {item.status !== 'approved' && item.status !== 'rejected' && (
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <button style={styles.button} onClick={() => approve(item.id)}>Approve Payout</button>
+                  <button
+                    style={{ ...styles.button, backgroundColor: '#cc0000', color: '#fff' }}
+                    onClick={() => reject(item.id)}
+                  >
+                    Reject
+                  </button>
+                </div>
               )}
             </div>
           );

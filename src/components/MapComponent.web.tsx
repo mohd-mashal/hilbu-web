@@ -1,3 +1,4 @@
+// FILE: src/components/MapComponent.web.tsx  (or wherever your web map file lives)
 import { useCallback, useMemo, useRef, useState, useEffect } from 'react';
 import {
   GoogleMap,
@@ -77,11 +78,18 @@ export default function MapComponent({
 
   const apiKey = readGoogleKey();
 
-  const { isLoaded } = useJsApiLoader({
+  const { isLoaded, loadError } = useJsApiLoader({
     id: 'hilbu-admin-map',
     googleMapsApiKey: apiKey,
     libraries: ['places'],
   });
+
+  // DEBUG: show which key & host your live build is using
+  useEffect(() => {
+    // tail only (safe to log)
+    if (apiKey) console.log('Maps key (tail): …' + apiKey.slice(-8));
+    console.log('Host:', window.location.origin);
+  }, [apiKey]);
 
   // Prepare marker icons (from /public)
   useEffect(() => {
@@ -152,7 +160,6 @@ export default function MapComponent({
           setDirections(result);
         } else {
           setDirections(null);
-          // console.warn('Directions failed:', status);
         }
       }
     );
@@ -174,10 +181,28 @@ export default function MapComponent({
     }
   }, [isLoaded, location, destination, towTruck, driverLocations]);
 
+  // ——— Error & loading states ———
   if (!apiKey) {
     return (
-      <div style={{ ...containerStyle, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        Missing Google Maps key. Set <code>VITE_GOOGLE_MAPS_API_KEY</code> on Vercel.
+      <div style={{ ...containerStyle, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+        <div>
+          <div style={{ fontWeight: 700, color: '#000' }}>Missing Google Maps key.</div>
+          <div style={{ color: '#000' }}>Set <code>VITE_GOOGLE_MAPS_API_KEY</code> on your host and redeploy.</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div style={{ ...containerStyle, display:'flex',alignItems:'center',justifyContent:'center',padding:16 }}>
+        <div>
+          <div style={{ fontWeight: 700, color:'#000' }}>Google Maps failed to load.</div>
+          <div style={{ color:'#000' }}>Check Web key referrers and API restrictions.</div>
+          <div style={{ color:'#000', marginTop: 8, fontSize: 12 }}>
+            Error: {(loadError as any)?.message || String(loadError)}
+          </div>
+        </div>
       </div>
     );
   }
