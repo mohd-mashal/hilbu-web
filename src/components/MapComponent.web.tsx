@@ -1,4 +1,4 @@
-// FILE: src/components/MapComponent.web.tsx  (or wherever your web map file lives)
+// FILE: src/components/MapComponent.web.tsx
 import { useCallback, useMemo, useRef, useState, useEffect } from 'react';
 import {
   GoogleMap,
@@ -64,6 +64,10 @@ function buildIcon(url: string): Promise<google.maps.Icon> {
   });
 }
 
+// IMPORTANT: keep only libraries your package version supports.
+// This avoids the “Type … not assignable to type 'Library'” error.
+const LIBRARIES: ('places')[] = ['places'];
+
 export default function MapComponent({
   location,
   destination,
@@ -81,12 +85,11 @@ export default function MapComponent({
   const { isLoaded, loadError } = useJsApiLoader({
     id: 'hilbu-admin-map',
     googleMapsApiKey: apiKey,
-    libraries: ['places'],
+    libraries: LIBRARIES,
   });
 
-  // DEBUG: show which key & host your live build is using
+  // DEBUG: show which key & host your live build is using (safe tail only)
   useEffect(() => {
-    // tail only (safe to log)
     if (apiKey) console.log('Maps key (tail): …' + apiKey.slice(-8));
     console.log('Host:', window.location.origin);
   }, [apiKey]);
@@ -114,12 +117,9 @@ export default function MapComponent({
     return defaultCenter;
   }, [location, towTruck]);
 
-  const onLoad = useCallback(
-    (map: google.maps.Map) => {
-      mapRef.current = map;
-    },
-    []
-  );
+  const onLoad = useCallback((map: google.maps.Map) => {
+    mapRef.current = map;
+  }, []);
 
   const onUnmount = useCallback(() => {
     mapRef.current = null;

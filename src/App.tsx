@@ -1,8 +1,9 @@
+// FILE: src/App.tsx
 import './index.css';
 import React, { useState, useEffect } from 'react';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import {
-  Home,
+  Home as HomeIcon,
   Users as UsersIcon,
   Truck,
   List,
@@ -32,6 +33,9 @@ import PromoCodes from './screens/PromoCodes';
 
 import Privacy from './privacy';
 import Terms from './terms';
+
+// NEW: Public landing page (you created this)
+import PublicHome from './screens/Home';
 
 // Store URLs
 const IOS_URL = 'https://apps.apple.com/us/app/hilbu/id6751604180?platform=iphone';
@@ -77,10 +81,8 @@ function StoreBadgeWithQR({
     }
   }, []);
 
-  // Bigger QR + strong error correction (H) + margin so cameras can lock on,
-  // and keep the center logo small (~18% of QR width)
   const QR_SIZE = 300;
-  const LOGO_SIZE = 54; // ~18% of 300
+  const LOGO_SIZE = 54;
   const qrUrl =
     `https://api.qrserver.com/v1/create-qr-code/?` +
     `size=${QR_SIZE}x${QR_SIZE}&margin=8&ecc=H&format=png&color=000000&bgcolor=FFFFFF&data=${encodeURIComponent(href)}`;
@@ -130,7 +132,7 @@ const App = () => {
     ScreenKey,
     { label: string; icon: any; component: () => React.ReactElement }
   > = {
-    dashboard: { label: 'Dashboard', icon: Home, component: () => <Dashboard setActiveTab={setActive} /> },
+    dashboard: { label: 'Dashboard', icon: HomeIcon, component: () => <Dashboard setActiveTab={setActive} /> },
     users: { label: 'Users', icon: UsersIcon, component: () => <Users /> },
     drivers: { label: 'Drivers', icon: Truck, component: () => <Drivers /> },
     trips: { label: 'Trips', icon: List, component: () => <Trips /> },
@@ -321,9 +323,16 @@ const App = () => {
   return (
     <BrowserRouter>
       <Routes>
+        {/* Public pages */}
+        <Route path="/" element={<PublicHome />} />
         <Route path="/privacy" element={<Privacy />} />
         <Route path="/terms" element={<Terms />} />
-        <Route path="*" element={authenticated ? AdminLayout : LoginScreen} />
+
+        {/* Admin entry */}
+        <Route path="/admin" element={authenticated ? AdminLayout : LoginScreen} />
+
+        {/* Fallback: anything unknown goes to the public homepage */}
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
   );
@@ -530,7 +539,6 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'inline-flex',
     alignItems: 'center',
   },
-  // popover positioned higher to fit the larger QR
   qrPopover: {
     position: 'absolute',
     top: -360,

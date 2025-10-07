@@ -1,93 +1,157 @@
+import React from "react";
+import { Link } from "react-router-dom";
+
+const YELLOW = "#FFDC00";
+
 export default function Privacy() {
+  const updated = new Date().toLocaleDateString();
+
   return (
-    <div style={{
-      minHeight: '100vh',
-      backgroundColor: '#f8f8f8',
-      padding: '60px 16px',
-      display: 'flex',
-      justifyContent: 'center',
-      alignItems: 'flex-start'
-    }}>
-      <div style={{
-        width: '100%',
-        maxWidth: 900,
-        backgroundColor: '#fff',
-        padding: '48px',
-        borderRadius: 16,
-        boxShadow: '0 8px 30px rgba(0,0,0,0.08)',
-      }}>
-        <h1 style={{ fontSize: 36, fontWeight: 700, color: '#FFDC00', marginBottom: 8 }}>
-          Privacy Policy
-        </h1>
-        <p style={{ fontSize: 16, color: '#444', marginBottom: 32 }}>
-          This Privacy Policy explains how HILBU collects, uses, and protects your personal data when using our mobile and web services.
-        </p>
-
-        <Section title="1. Information We Collect" items={[
-          "Name, phone number, and optional email",
-          "Real-time user and driver locations",
-          "Device model, OS version, identifiers",
-          "Trip history, request logs, and timestamps",
-          "Push tokens for service alerts"
-        ]} />
-
-        <Section title="2. How We Use Your Data" items={[
-          "To match users with available drivers",
-          "To send recovery status updates",
-          "To log trips, generate invoices, and support services",
-          "To monitor system performance"
-        ]} />
-
-        <Section title="3. Data Sharing">
-          <p>
-            We do not sell your data. Your information is only shared with trusted partners like Firebase and Google Maps to enable service. Admin access is restricted and role-based.
-          </p>
-        </Section>
-
-        <Section title="4. Data Storage & Security">
-          <p>
-            All user data is encrypted and securely stored on Firebase servers with restricted access and protection via industry best practices.
-          </p>
-        </Section>
-
-        <Section title="5. Your Rights" items={[
-          "Access, update, or delete your data at any time",
-          "Disable location access (may impact functionality)"
-        ]} />
-
-        <Section title="6. Children’s Privacy">
-          <p>We do not knowingly collect data from users under 16. HILBU is not intended for children.</p>
-        </Section>
-
-        <Section title="7. Policy Updates">
-          <p>We may update this policy. Changes will be shown on this page and announced inside the app.</p>
-        </Section>
-
-        <Section title="8. Contact Us">
-          <p>
-            Questions? Email us at:
-            <br />
-            <a href="mailto:support@hilbu.com" style={{ color: '#FFDC00', fontWeight: 600 }}>
-              support@hilbu.com
-            </a>
-          </p>
-        </Section>
+    <div style={styles.page}>
+      {/* Header like Home */}
+      <div style={styles.siteHeader}>
+        <div style={styles.headerLeft}>
+          <img src="/icon.png" alt="HILBU" style={styles.headerLogo} />
+          <span style={styles.headerTag}>Your Trusted Car Recovery Partner</span>
+        </div>
+        <div style={styles.headerRight}>
+          <Link to="/" style={styles.headerPill}>Home</Link>
+          <Link to="/terms" style={styles.headerPill}>Terms &amp; Conditions</Link>
+        </div>
       </div>
+      <div style={styles.headerSpacer} />
+
+      {/* Hero */}
+      <section style={styles.hero}>
+        <div style={styles.heroText}>
+          <h1 style={styles.title}>Privacy Policy</h1>
+          <p style={styles.kicker}>
+            How HILBU collects, uses, and protects data across our mobile and web services.
+          </p>
+          <div style={styles.metaRow}>
+            <span style={styles.badge}>Updated: {updated}</span>
+            <span style={styles.dot} />
+            <span style={styles.meta}>We respect your privacy</span>
+          </div>
+        </div>
+        <div style={styles.heroArt}>
+          <img src="/hero-truck.png" alt="HILBU Tow Truck" style={styles.heroImg} />
+        </div>
+      </section>
+
+      <main style={styles.container}>
+        <Card n={1} title="Information We Collect" bullets={[
+          "Name, phone number, and optional email",
+          "Real-time user and driver locations (with permission)",
+          "Device model, OS version, and app identifiers",
+          "Trip history, request logs, and timestamps",
+          "Push tokens for service alerts",
+        ]} />
+
+        <Card n={2} title="How We Use Data" bullets={[
+          "Match users with available recovery drivers",
+          "Send status updates and service notifications",
+          "Log trips, generate reports, and provide support",
+          "Monitor performance and improve reliability",
+        ]} />
+
+        <Card n={3} title="Data Sharing">
+          We do not sell your data. We only share with trusted providers (e.g., Firebase, Google Maps) to enable the service. Admin access is restricted and role-based.
+        </Card>
+
+        <Card n={4} title="Storage & Security">
+          Data is encrypted in transit and at rest. We apply least-privilege access and industry best practices.
+        </Card>
+
+        <Card n={5} title="Your Choices & Rights" bullets={[
+          "Access, update, or request deletion of your data",
+          "Disable location access (may limit functionality)",
+          "Control notification permissions from device settings",
+        ]} />
+
+        <Card n={6} title="Children’s Privacy">
+          HILBU is not intended for children under 16 and we do not knowingly collect their data.
+        </Card>
+
+        <Card n={7} title="Policy Updates">
+          We may update this Policy. Changes will appear on this page and, where appropriate, inside the app.
+        </Card>
+
+        <Card n={8} title="Contact">
+          Questions? Email{" "}
+          <a href="mailto:support@hilbu.com" style={styles.link}>support@hilbu.com</a>.
+        </Card>
+
+        <div style={styles.ctaRow}>
+          <Link to="/" style={styles.ctaGhost}>← Back to Home</Link>
+          <Link to="/terms" style={styles.ctaSolid}>View Terms &amp; Conditions</Link>
+        </div>
+      </main>
+
+      <footer style={styles.footer}>
+        <img src="/icon.png" alt="HILBU" style={styles.footerLogo} />
+        <span>© {new Date().getFullYear()} HILBU Technologies</span>
+      </footer>
     </div>
   );
 }
 
-function Section({ title, children, items }: { title: string; children?: any; items?: string[] }) {
+function Card({
+  n, title, children, bullets,
+}: { n: number; title: string; children?: React.ReactNode; bullets?: string[] }) {
   return (
-    <section style={{ marginBottom: 32 }}>
-      <h2 style={{ fontSize: 20, fontWeight: 600, color: '#000', marginBottom: 12 }}>{title}</h2>
-      {items ? (
-        <ul style={{ paddingLeft: 20, color: '#333', fontSize: 15, lineHeight: 1.8 }}>
-          {items.map((item, index) => (
-            <li key={index} style={{ marginBottom: 8 }}>{item}</li>
-          ))}
-        </ul>
-      ) : children}
+    <section style={styles.card}>
+      <div style={styles.cardHead}>
+        <span style={styles.num}>{n}</span>
+        <h2 style={styles.cardTitle}>{title}</h2>
+      </div>
+      {bullets ? (
+        <ul style={styles.list}>{bullets.map((b, i) => <li key={i} style={styles.li}>{b}</li>)}</ul>
+      ) : (
+        <p style={styles.body}>{children}</p>
+      )}
     </section>
   );
 }
+
+const styles: Record<string, React.CSSProperties> = {
+  page: { background: "linear-gradient(180deg,#FFFCE6 0%,#FFF 100%)", minHeight: "100vh", color: "#000", fontFamily: "Poppins, sans-serif" },
+
+  /* Header like Home */
+  siteHeader: { position: "fixed", top: 0, left: 0, right: 0, height: 90, background: "#000", color: "#fff", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 18px", zIndex: 100, boxShadow: "0 6px 16px rgba(0,0,0,.25)" },
+  headerLeft: { display: "flex", alignItems: "center", gap: 20 },
+  headerLogo: { width: 150, height: 80, objectFit: "contain" },
+  headerTag: { fontWeight: 700, fontSize: ".95rem", color: YELLOW },
+  headerRight: { display: "flex", alignItems: "center", gap: 10 },
+  headerPill: { background: "#fff", color: "#000", border: `2px solid ${YELLOW}`, textDecoration: "none", padding: "8px 14px", borderRadius: 999, fontWeight: 700, fontSize: ".85rem" },
+  headerSpacer: { height: 110 },
+
+  hero: { maxWidth: 1200, margin: "24px auto 8px", padding: "24px 20px", display: "grid", gridTemplateColumns: "1.2fr .8fr", gap: 20, alignItems: "center" },
+  heroText: { padding: "14px 10px" },
+  title: { fontSize: 40, lineHeight: 1.15, margin: 0, fontWeight: 900 },
+  kicker: { margin: "10px 0 8px", color: "#333", fontSize: 16 },
+  metaRow: { display: "flex", alignItems: "center", gap: 10, marginTop: 6 },
+  badge: { background: YELLOW, color: "#000", fontWeight: 800, padding: "6px 10px", borderRadius: 999, fontSize: 12 },
+  dot: { width: 6, height: 6, borderRadius: 999, background: "#bbb" },
+  meta: { color: "#555", fontSize: 13 },
+
+  heroArt: { display: "flex", justifyContent: "center" },
+  heroImg: { width: 420, borderRadius: 16, boxShadow: "0 8px 24px rgba(0,0,0,.15)" },
+
+  container: { maxWidth: 980, margin: "8px auto 40px", padding: "0 16px" },
+
+  card: { background: "#fff", borderRadius: 16, padding: 24, marginBottom: 16, boxShadow: "0 6px 24px rgba(0,0,0,.06)", border: `1px solid rgba(0,0,0,.06)` },
+  cardHead: { display: "flex", alignItems: "center", gap: 12, marginBottom: 6 },
+  num: { width: 32, height: 32, borderRadius: 8, background: YELLOW, display: "inline-flex", alignItems: "center", justifyContent: "center", fontWeight: 900 },
+  cardTitle: { fontSize: 20, margin: 0 },
+  body: { color: "#333", margin: "8px 0 0", lineHeight: 1.7 },
+  list: { paddingLeft: 20, margin: 0, color: "#333", lineHeight: 1.8 },
+  li: { marginBottom: 6 },
+
+  ctaRow: { display: "flex", justifyContent: "space-between", gap: 12, marginTop: 20 },
+  ctaGhost: { textDecoration: "none", color: "#000", border: "2px solid #000", padding: "10px 14px", borderRadius: 12, fontWeight: 800 },
+  ctaSolid: { textDecoration: "none", color: "#000", background: YELLOW, padding: "10px 14px", borderRadius: 12, fontWeight: 800 },
+
+  footer: { display: "flex", alignItems: "center", gap: 10, justifyContent: "center", background: "#000", color: "#fff", padding: "18px 16px" },
+  footerLogo: { width: 34, height: 34, objectFit: "contain" },
+};
