@@ -1,7 +1,84 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
 const YELLOW = "#FFDC00";
+const IOS_URL =
+  "https://apps.apple.com/us/app/hilbu/id6751604180?platform=iphone";
+const ANDROID_URL =
+  "https://play.google.com/store/apps/details?id=com.hilbu.recovery";
+
+/* Store badge with QR (same behavior as Home) */
+function StoreBadgeWithQR({
+  imgSrc,
+  alt,
+  href,
+  label,
+}: {
+  imgSrc: string;
+  alt: string;
+  href: string;
+  label: "iPhone" | "Android";
+}) {
+  const [show, setShow] = useState(false);
+  const [allowHover, setAllowHover] = useState(true);
+
+  useEffect(() => {
+    try {
+      const mq = window.matchMedia && window.matchMedia("(hover: hover)");
+      setAllowHover(!!mq?.matches);
+    } catch {
+      setAllowHover(true);
+    }
+  }, []);
+
+  const QR_SIZE = 300;
+  const LOGO_SIZE = 54;
+  const qrUrl =
+    `https://api.qrserver.com/v1/create-qr-code/?` +
+    `size=${QR_SIZE}x${QR_SIZE}&margin=8&ecc=H&format=png&color=000000&bgcolor=FFFFFF&data=${encodeURIComponent(
+      href
+    )}`;
+
+  return (
+    <div
+      style={styles.storeBadgeWrap}
+      onMouseEnter={() => allowHover && setShow(true)}
+      onMouseLeave={() => allowHover && setShow(false)}
+    >
+      <a
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        title={alt}
+        style={styles.storeBadgeLink}
+      >
+        <img src={imgSrc} alt={alt} style={styles.storeMiniIconActive} />
+      </a>
+
+      {allowHover && show && (
+        <div style={styles.qrPopover}>
+          <div style={styles.qrBox}>
+            <div style={{ ...styles.qrCanvasWrap, width: QR_SIZE, height: QR_SIZE }}>
+              <img
+                src={qrUrl}
+                alt={`${label} QR`}
+                style={{ ...styles.qrImg, width: QR_SIZE, height: QR_SIZE }}
+              />
+              <div style={{ ...styles.qrLogoWrap, width: LOGO_SIZE, height: LOGO_SIZE }}>
+                <img
+                  src="/InvoiceLogo.png"
+                  alt="HILBU"
+                  style={{ width: LOGO_SIZE - 6, height: LOGO_SIZE - 6, objectFit: "contain" }}
+                />
+              </div>
+            </div>
+            <div style={styles.qrLabelSmall}>{label}</div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function Privacy() {
   const updated = new Date().toLocaleDateString();
@@ -88,9 +165,32 @@ export default function Privacy() {
         </div>
       </main>
 
-      <footer style={styles.footer}>
-        <img src="/icon.png" alt="HILBU" style={styles.footerLogo} />
-        <span>© {new Date().getFullYear()} HILBU Technologies</span>
+      {/* Footer (same as Home) */}
+      <footer style={styles.homeFooter}>
+        <div style={styles.footerLeft}>
+          <img src="/icon.png" alt="HILBU" style={styles.footerLogo} />
+          <span>© {new Date().getFullYear()} HILBU Technologies</span>
+        </div>
+
+        <div style={styles.footerStores}>
+          <StoreBadgeWithQR
+            imgSrc="/appstore.png"
+            alt="Download on the App Store"
+            href={IOS_URL}
+            label="iPhone"
+          />
+          <StoreBadgeWithQR
+            imgSrc="/playstore.png"
+            alt="Get it on Google Play"
+            href={ANDROID_URL}
+            label="Android"
+          />
+        </div>
+
+        <div style={styles.footerLinks}>
+          <Link to="/terms" style={styles.footerLink}>Terms &amp; Conditions</Link>
+          <Link to="/privacy" style={styles.footerLink}>Privacy Policy</Link>
+        </div>
       </footer>
     </div>
   );
@@ -152,6 +252,22 @@ const styles: Record<string, React.CSSProperties> = {
   ctaGhost: { textDecoration: "none", color: "#000", border: "2px solid #000", padding: "10px 14px", borderRadius: 12, fontWeight: 800 },
   ctaSolid: { textDecoration: "none", color: "#000", background: YELLOW, padding: "10px 14px", borderRadius: 12, fontWeight: 800 },
 
-  footer: { display: "flex", alignItems: "center", gap: 10, justifyContent: "center", background: "#000", color: "#fff", padding: "18px 16px" },
-  footerLogo: { width: 34, height: 34, objectFit: "contain" },
+  /* Footer like Home (grid + QR popover support) */
+  homeFooter: { display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center", gap: 16, padding: "18px 24px 28px", background: "#000", color: "#fff", width: "100%", boxSizing: "border-box" },
+  footerLeft: { display: "flex", alignItems: "center", gap: 12, fontSize: ".98rem" },
+  footerLogo: { width: 70, height: 46, objectFit: "contain" },
+  footerStores: { display: "flex", alignItems: "center", gap: 12, justifySelf: "center" },
+  footerLinks: { display: "flex", gap: 14, justifyContent: "flex-end" },
+  footerLink: { color: YELLOW, textDecoration: "none", fontWeight: 700, borderBottom: "2px solid transparent" },
+
+  /* Store badge + QR styles */
+  storeMiniIconActive: { height: 36, opacity: 1, cursor: "pointer", borderRadius: 6, transition: "transform 0.12s ease" },
+  storeBadgeLink: { display: "inline-flex", alignItems: "center" },
+  storeBadgeWrap: { position: "relative", display: "inline-flex", alignItems: "center" },
+  qrPopover: { position: "absolute", top: -360, left: "50%", transform: "translateX(-50%)", zIndex: 50, pointerEvents: "none" },
+  qrBox: { background: "#fff", border: `2px solid ${YELLOW}`, borderRadius: 12, boxShadow: "0 10px 24px rgba(0,0,0,.25)", padding: 10, textAlign: "center" },
+  qrCanvasWrap: { position: "relative", width: 300, height: 300 },
+  qrImg: { width: 300, height: 300, display: "block" },
+  qrLogoWrap: { position: "absolute", top: "50%", left: "50%", transform: "translate(-50%,-50%)", borderRadius: 12, background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 0 0 3px #fff" },
+  qrLabelSmall: { marginTop: 6, fontSize: 12, fontWeight: 600, color: "#000" },
 };
