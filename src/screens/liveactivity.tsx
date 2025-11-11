@@ -8,14 +8,12 @@ interface LocationData {
   longitude: number;
   timestamp?: string;
 }
-
 interface UserData {
   id: string;
   name: string;
   phone?: string;
   location?: LocationData;
 }
-
 interface DriverData {
   id: string;
   name: string;
@@ -23,14 +21,12 @@ interface DriverData {
   location?: LocationData;
   isOnline?: boolean;
 }
-
 interface LogEntry {
   id: string;
   time: string;
   driver: string;
   action: string;
 }
-
 interface JobEntry {
   id: string;
   pickup?: any;
@@ -53,57 +49,69 @@ export default function LiveActivity() {
   const [driverLocations, setDriverLocations] = useState<DriverData[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Read API key safely (Vite or process.env)
   const apiKey =
     (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY) ||
     (typeof process !== 'undefined' && (process as any).env?.VITE_GOOGLE_MAPS_API_KEY) ||
     '';
 
-  const { isLoaded } = useJsApiLoader({
+  // Load Maps JS API with error handling
+  const { isLoaded, loadError } = useJsApiLoader({
     id: 'hilbu-admin-live-map',
-    googleMapsApiKey: apiKey,
+    googleMapsApiKey: apiKey || 'invalid-key', // never undefined
     libraries: ['places'],
+    version: 'weekly',
   });
 
   const mapRef = useRef<google.maps.Map | null>(null);
 
+  // Icons created ONLY after google is ready
   const userIcon = useMemo(() => {
-    if (!isLoaded || !window.google) return undefined;
+    if (!isLoaded || typeof window === 'undefined' || !window.google) return undefined;
     return { url: '/MapCar.png', scaledSize: new window.google.maps.Size(30, 35) };
   }, [isLoaded]);
 
   const driverIcon = useMemo(() => {
-    if (!isLoaded || !window.google) return undefined;
+    if (!isLoaded || typeof window === 'undefined' || !window.google) return undefined;
     return { url: '/tow-truck.png', scaledSize: new window.google.maps.Size(30, 35) };
   }, [isLoaded]);
 
   const fitAll = useCallback(() => {
-    if (!mapRef.current || !window.google) return;
-    const bounds = new window.google.maps.LatLngBounds();
-    userLocations.forEach(
-      (u) => u.location && bounds.extend({ lat: u.location.latitude, lng: u.location.longitude })
-    );
-    driverLocations.forEach(
-      (d) => d.location && bounds.extend({ lat: d.location.latitude, lng: d.location.longitude })
-    );
-    if (bounds.isEmpty()) {
-      mapRef.current.setCenter(defaultCenter);
-      mapRef.current.setZoom(11);
-    } else {
-      mapRef.current.fitBounds(bounds, 60); // auto-fit (zooms out/in to include all markers)
+    try {
+      if (!mapRef.current || typeof window === 'undefined' || !window.google) return;
+      const bounds = new window.google.maps.LatLngBounds();
+      userLocations.forEach((u) => {
+        if (u.location) bounds.extend({ lat: u.location.latitude, lng: u.location.longitude });
+      });
+      driverLocations.forEach((d) => {
+        if (d.location) bounds.extend({ lat: d.location.latitude, lng: d.location.longitude });
+      });
+      if (bounds.isEmpty()) {
+        mapRef.current.setCenter(defaultCenter);
+        mapRef.current.setZoom(11);
+      } else {
+        mapRef.current.fitBounds(bounds, 60);
+      }
+    } catch (e) {
+      // Prevent any silent crash that would blank the screen
+      console.error('fitAll error:', e);
     }
   }, [userLocations, driverLocations]);
 
+  // Firestore listeners (kept exactly, with safe setState on unmount)
   useEffect(() => {
-    // users
+    let isMounted = true;
+
     const unsubUsers = onSnapshot(collection(firestore, 'users'), (snapshot) => {
+      if (!isMounted) return;
       const users = snapshot.docs
         .map((doc) => ({ id: doc.id, ...doc.data() } as UserData))
         .filter((u) => u.location);
       setUserLocations(users);
     });
 
-    // drivers
     const unsubDrivers = onSnapshot(collection(firestore, 'drivers'), (snapshot) => {
+      if (!isMounted) return;
       const drivers = snapshot.docs
         .map((doc) => ({ id: doc.id, ...doc.data() } as DriverData))
         .filter((d) => d.location);
@@ -119,27 +127,51 @@ export default function LiveActivity() {
       setLoading(false);
     });
 
-    // recent jobs
     const jobsQuery = query(
       collection(firestore, 'recovery_requests'),
       orderBy('timestamp', 'desc'),
       limit(5)
     );
     const unsubJobs = onSnapshot(jobsQuery, (snapshot) => {
+      if (!isMounted) return;
       const jobList = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() } as JobEntry));
       setJobs(jobList);
     });
 
     return () => {
+      isMounted = false;
       unsubUsers();
       unsubDrivers();
       unsubJobs();
     };
   }, []);
 
+  // Auto-fit when new locations arrive
   useEffect(() => {
     if (isLoaded) fitAll();
   }, [isLoaded, userLocations, driverLocations, fitAll]);
+
+  // ------- Render -------
+
+  // If Maps failed to load or key missing, show a friendly card instead of a blank screen
+  if (loadError || !apiKey) {
+    return (
+      <div style={styles.container}>
+        <h2 style={styles.title}>Live Driver &amp; User Map</h2>
+        <div style={styles.errorCard}>
+          <div style={{ fontWeight: 700, marginBottom: 6 }}>Map failed to load</div>
+          <div style={{ fontSize: 14, lineHeight: 1.4 }}>
+            {apiKey
+              ? 'Google Maps could not be initialized. Please refresh the page.'
+              : 'Missing VITE_GOOGLE_MAPS_API_KEY. Add it to your environment and rebuild.'}
+          </div>
+        </div>
+
+        <SectionJobs jobs={jobs} />
+        <SectionLogs loading={loading} logs={logs} />
+      </div>
+    );
+  }
 
   return (
     <div style={styles.container}>
@@ -158,12 +190,12 @@ export default function LiveActivity() {
               mapTypeControl: false,
               streetViewControl: false,
               fullscreenControl: false,
-              zoomControl: true, // ✅ show +/- zoom buttons
-              // zoomControlOptions: { position: google.maps.ControlPosition.RIGHT_BOTTOM }, // (optional)
+              zoomControl: true,
             }}
             onLoad={(map) => {
               mapRef.current = map;
-              fitAll(); // keep auto-zoom on initial load
+              // Delay fit to next frame to avoid rare race conditions
+              requestAnimationFrame(() => fitAll());
             }}
             onUnmount={() => {
               mapRef.current = null;
@@ -191,12 +223,21 @@ export default function LiveActivity() {
             )}
           </GoogleMap>
         )}
-        {/* Optional manual recenter button (keeps UI minimal). Remove if not needed. */}
         <button style={styles.fitButton} onClick={fitAll} title="Recenter to show all">
           Fit All
         </button>
       </div>
 
+      <SectionJobs jobs={jobs} />
+      <SectionLogs loading={loading} logs={logs} />
+    </div>
+  );
+}
+
+/* -------- Small, self-contained sections (unchanged logic) -------- */
+function SectionJobs({ jobs }: { jobs: JobEntry[] }) {
+  return (
+    <>
       <h2 style={styles.title}>Live Recovery Jobs</h2>
       {jobs.length === 0 ? (
         <p style={styles.emptyLogs}>No recent recovery jobs.</p>
@@ -210,7 +251,13 @@ export default function LiveActivity() {
           </div>
         ))
       )}
+    </>
+  );
+}
 
+function SectionLogs({ loading, logs }: { loading: boolean; logs: LogEntry[] }) {
+  return (
+    <>
       <h2 style={styles.title}>Driver Activity Logs</h2>
       {loading ? (
         <p style={styles.emptyLogs}>Loading real-time data...</p>
@@ -225,10 +272,11 @@ export default function LiveActivity() {
           </div>
         ))
       )}
-    </div>
+    </>
   );
 }
 
+/* --------------------------- Styles --------------------------- */
 const styles: Record<string, React.CSSProperties> = {
   container: {
     padding: 24,
@@ -306,5 +354,13 @@ const styles: Record<string, React.CSSProperties> = {
     textAlign: 'center',
     color: '#555',
     fontSize: 14,
+  },
+  errorCard: {
+    border: '1px solid #eee',
+    background: '#fff8cc',
+    color: '#222',
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 24,
   },
 };

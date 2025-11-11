@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import "./Home.css";
 
-/* === Store badges with QR (same behavior as admin login) === */
+/* === Store badges with QR (used in CTA band) === */
 function StoreBadgeWithQR({
   imgSrc,
   alt,
@@ -85,11 +85,11 @@ export default function Home() {
 
   return (
     <div className="home-container">
-      {/* ===== Top Header (exactly as requested) ===== */}
+      {/* ===== Fixed Header ===== */}
       <div className="site-header">
         <div className="header-left">
           <img src="/icon.png" alt="HILBU" className="header-logo" />
-          <span className="header-tagline">Your Trusted Car Recovery Partner</span>
+          <div className="header-tagline">Your Trusted Car Recovery Partner</div>
         </div>
 
         <nav className="header-right">
@@ -97,47 +97,130 @@ export default function Home() {
           <Link to="/privacy" className="header-pill">Privacy Policy</Link>
         </nav>
       </div>
-
-      {/* Spacer for fixed header */}
       <div className="header-spacer" />
 
       {/* ===== Hero ===== */}
-      <section className="home-hero">
-        <div className="hero-content">
-          <h2>Fast • Reliable • 24/7 Roadside Assistance</h2>
-          <p className="hero-lead">
-            HILBU connects you instantly with professional recovery drivers near
-            you. Whether your car breaks down or needs towing — we’re always
-            there to help.
+      <section className="hero section-gap">
+        <div className="hero-left">
+          <h1 className="hero-title">
+            Fast • Reliable • 24/7<br className="hide-sm" /> Roadside Assistance
+          </h1>
+          <p className="hero-sub">
+            HILBU connects you instantly with professional recovery drivers near you.
+            Whether your car breaks down or needs towing — we’re always there to help.
           </p>
 
-          <div className="hero-actions">
+          <div className="hero-ctaRow">
             <Link to="/admin">
               <button className="admin-button">🔐 Admin Login</button>
             </Link>
           </div>
         </div>
 
-        <img src="/hero-truck.png" alt="Tow Truck" className="hero-image" />
+        <div className="hero-right">
+          <div className="shot-pair">
+            <div className="shotFrame">
+              <img src="/1.png" alt="Get Started in Seconds" className="shot" />
+            </div>
+            <div className="shotFrame">
+              <img src="/2.png" alt="Car Recovery in Seconds" className="shot" />
+            </div>
+          </div>
+        </div>
       </section>
 
-      {/* ===== Features ===== */}
-      <section className="features">
-        <div className="feature-card">
-          <img src="/fast.png" alt="Fast" className="feature-icon big" />
+      {/* ===== Value Props ===== */}
+      <section className="valueProps section-gap">
+        <div className="vcard">
+          <img src="/fast.png" alt="Instant Help" className="vicon" />
           <h3>Instant Help</h3>
           <p>Get connected with the nearest available recovery truck.</p>
         </div>
-        <div className="feature-card">
-          <img src="/safe.png" alt="Safe" className="feature-icon big" />
-          <h3>Secure & Verified</h3>
+        <div className="vcard">
+          <img src="/safe.png" alt="Secure & Verified" className="vicon" />
+          <h3>Secure &amp; Verified</h3>
           <p>All drivers are verified and tracked through our system.</p>
         </div>
-        <div className="feature-card">
-          <img src="/support.png" alt="Support" className="feature-icon big" />
+        <div className="vcard">
+          <img src="/support.png" alt="24/7 Support" className="vicon" />
           <h3>24/7 Support</h3>
           <p>Day or night, HILBU is always ready to assist you.</p>
         </div>
+      </section>
+
+      {/* ===== Feature Screens ===== */}
+      <section className="featureScreens section-gap">
+        <div className="fs-row">
+          <div className="fs-left">
+            <h2 className="fs-title">Clear Trip Details</h2>
+            <p className="fs-sub">
+              See pickup, dropoff, distance, duration, and total price before you proceed.
+            </p>
+          </div>
+          <div className="fs-right">
+            <div className="tiltPhone">
+              <div className="tiltCircle" />
+              <img src="/3.png" alt="Clear Trip Details" className="tiltImage" />
+            </div>
+          </div>
+        </div>
+
+        <div className="fs-row reverse">
+          <div className="fs-left">
+            <h2 className="fs-title">Track Your Driver Live</h2>
+            <p className="fs-sub">
+              Follow ETA, cost, and driver info in real time — right on the map.
+            </p>
+          </div>
+          <div className="fs-right">
+            <div className="tiltPhone">
+              <div className="tiltCircle" />
+              <img src="/4.png" alt="Track Your Driver Live" className="tiltImage" />
+            </div>
+          </div>
+        </div>
+
+        <div className="fs-row">
+          <div className="fs-left">
+            <h2 className="fs-title">Your Trips, Your Records</h2>
+            <p className="fs-sub">
+              Full history with instant bill download for every completed recovery.
+            </p>
+          </div>
+          <div className="fs-right">
+            <div className="tiltPhone">
+              <div className="tiltCircle" />
+              <img src="/5.png" alt="Your Trips, Your Records" className="tiltImage" />
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ===== CTA band ===== */}
+      <section className="ctaBand section-gap">
+        <div className="ctaText">
+          <h2>Ready When You Need Us</h2>
+          <p>
+            Book a recovery in seconds. Track your driver live. Get a clear price upfront.
+          </p>
+
+          <div className="ctaBadges">
+            <StoreBadgeWithQR
+              imgSrc="/appstore.png"
+              alt="Download on the App Store"
+              href={IOS_URL}
+              label="iPhone"
+            />
+            <StoreBadgeWithQR
+              imgSrc="/playstore.png"
+              alt="Get it on Google Play"
+              href={ANDROID_URL}
+              label="Android"
+            />
+          </div>
+        </div>
+
+        <img src="/hero-truck.png" alt="HILBU tow truck" className="ctaTruck" />
       </section>
 
       {/* ===== Footer ===== */}
@@ -145,21 +228,6 @@ export default function Home() {
         <div className="footer-left">
           <img src="/icon.png" alt="HILBU" className="footer-logo" />
           <span>© {new Date().getFullYear()} HILBU Technologies</span>
-        </div>
-
-        <div className="footer-stores">
-          <StoreBadgeWithQR
-            imgSrc="/appstore.png"
-            alt="Download on the App Store"
-            href={IOS_URL}
-            label="iPhone"
-          />
-          <StoreBadgeWithQR
-            imgSrc="/playstore.png"
-            alt="Get it on Google Play"
-            href={ANDROID_URL}
-            label="Android"
-          />
         </div>
 
         <div className="footer-links">
