@@ -20,7 +20,7 @@ function SocialIcon({ kind, href }: { kind: SocialKind; href: string }) {
         <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
           <path
             fill="currentColor"
-            d="M12 2.8c3.2 0 3.6 0 4.9.1 1.2.1 1.9.2 2.4.5.6.2 1 .5 1.5 1s.7.9 1 1.5c.2.5.4 1.2.5 2.4.1 1.3.1 1.7.1 4.9s0 3.6-.1 4.9c-.1 1.2-.2 1.9-.5 2.4-.2.6-.5 1-1 1.5s-.9.7-1.5 1c-.5.2-1.2.4-2.4.5-1.3.1-1.7.1-4.9.1s-3.6 0-4.9-.1c-1.2-.1-1.9-.2-2.4-.5-.6-.2-1-.5-1.5-1s-.7-.9-1-1.5c-.2-.5-.4-1.2-.5-2.4C2.8 15.6 2.8 15.2 2.8 12s0-3.6.1-4.9c.1-1.2.2-1.9.5-2.4.2-.6.5-1 1-1.5s.9-.7 1.5-1c.5-.2 1.2-.4 2.4-.5C8.4 2.8 8.8 2.8 12 2.8Zm0 1.8c-3.2 0-3.5 0-4.8.1-1 .1-1.6.2-2 .4-.5.2-.8.4-1.2.8-.4.4-.6.7-.8 1.2-.2.4-.3 1-.4 2-.1 1.3-.1 1.6-.1 4.8s0 3.5.1 4.8c.1 1 .2 1.6.4 2 .2.5.4.8.8 1.2.4.4.7.6 1.2.8.4.2 1 .3 2 .4 1.3.1 1.6.1 4.8.1s3.5 0 4.8-.1c1-.1 1.6-.2 2-.4.5-.2.8-.4 1.2-.8.4-.4.6-.7.8-1.2.2-.4.3-1 .4-2 .1-1.3.1-1.6.1-4.8s0-3.5-.1-4.8c-.1-1-.2-1.6-.4-2-.2-.5-.4-.8-.8-1.2-.4-.4-.7-.6-1.2-.8-.4-.2-1-.3-2-.4-1.3-.1-1.6-.1-4.8-.1Zm0 3.4A6.99 6.99 0 1 1 12 19a6.99 6.99 0 0 1 0-14Zm0 2a5 5 0 1 0 0 10 5 5 0 0 0 0-10Zm5.7-1.2a1.3 1.3 0 1 1-2.6 0 1.3 1.3 0 0 1 2.6 0Z"
+            d="M7 2C4.2 2 2 4.2 2 7v10c0 2.8 2.2 5 5 5h10c2.8 0 5-2.2 5-5V7c0-2.8-2.2-5-5-5H7zm0 2h10c1.7 0 3 1.3 3 3v10c0 1.7-1.3 3-3 3H7c-1.7 0-3-1.3-3-3V7c0-1.7 1.3-3 3-3zm5 2.5A4.5 4.5 0 1 0 16.5 11 4.5 4.5 0 0 0 12 6.5zm0 2A2.5 2.5 0 1 1 9.5 11 2.5 2.5 0 0 1 12 8.5zm4.8-3.1a1.1 1.1 0 1 0 1.1 1.1 1.1 1.1 0 0 0-1.1-1.1z"
           />
         </svg>
       )}
@@ -141,13 +141,13 @@ export default function Home() {
   const ANDROID_URL =
     "https://play.google.com/store/apps/details?id=com.hilbu.recovery";
 
-  /* Replace these URLs with your real profiles */
+  /* Your real social links */
   const socials = {
-    instagram: "https://instagram.com/hilbu",
-    facebook: "https://facebook.com/hilbu",
-    tiktok: "https://www.tiktok.com/@hilbu",
-    linkedin: "https://www.linkedin.com/company/hilbu",
-    youtube: "https://www.youtube.com/@hilbu",
+    facebook: "https://www.facebook.com/hilbuapp/",
+    instagram: "https://www.instagram.com/hilbu_app/",
+    linkedin: "https://www.linkedin.com/company/hilbu/",
+    tiktok: "https://www.tiktok.com/@hilbu_app",
+    youtube: "https://www.youtube.com/@HILBU_APP",
   };
 
   return (
@@ -160,8 +160,12 @@ export default function Home() {
         </div>
 
         <nav className="header-right">
-          <Link to="/terms" className="header-pill">Terms &amp; Conditions</Link>
-          <Link to="/privacy" className="header-pill">Privacy Policy</Link>
+          <Link to="/terms" className="header-pill">
+            Terms &amp; Conditions
+          </Link>
+          <Link to="/privacy" className="header-pill">
+            Privacy Policy
+          </Link>
 
           {/* Header Socials */}
           <div className="socials header-socials">
@@ -179,7 +183,8 @@ export default function Home() {
       <section className="hero section-gap">
         <div className="hero-left">
           <h1 className="hero-title">
-            Fast • Reliable • 24/7<br className="hide-sm" /> Roadside Assistance
+            Fast • Reliable • 24/7
+            <br className="hide-sm" /> Roadside Assistance
           </h1>
           <p className="hero-sub">
             HILBU connects you instantly with professional recovery drivers near you.
@@ -307,8 +312,12 @@ export default function Home() {
         </div>
 
         <div className="footer-links">
-          <Link to="/terms" className="footer-link">Terms &amp; Conditions</Link>
-          <Link to="/privacy" className="footer-link">Privacy Policy</Link>
+          <Link to="/terms" className="footer-link">
+            Terms &amp; Conditions
+          </Link>
+          <Link to="/privacy" className="footer-link">
+            Privacy Policy
+          </Link>
 
           {/* Footer Socials */}
           <div className="socials footer-socials">

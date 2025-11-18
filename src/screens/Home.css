@@ -143,11 +143,11 @@
 .tiltPhone{ position: relative; width: 360px; height: 360px; display:flex; align-items:center; justify-content:center; }
 .tiltCircle{
   position:absolute;
-  inset:0;                 /* keep as 0 */
+  inset:0;
   border-radius:50%;
   background: radial-gradient(circle at 40% 40%, #FFDC00 0%, #f2c800 70%, #f2c800 100%);
   box-shadow: 0 16px 36px rgba(0,0,0,.18);
-  transform: scale(1.15);  /* ↑ make circle bigger (try 1.10–1.25) */
+  transform: scale(1.15);  /* make circle bigger */
   transform-origin: center;
 }
 .tiltImage{ position: relative; width: 74%; border-radius: 24px; transform: rotate(-14deg); box-shadow: 0 16px 32px var(--shadow-4); background:#fff; }
@@ -209,9 +209,11 @@
   transition: transform .15s ease, background .15s ease, color .15s ease;
   text-decoration:none;
 }
-.social-btn:hover { transform: translateY(-1px) scale(1.03); background: var(--hilbu-yellow); color: var(--hilbu-ink); }
-
-/* small tweak so header doesn’t shift */
+.social-btn:hover {
+  transform: translateY(-1px) scale(1.03);
+  background: var(--hilbu-yellow);
+  color: var(--hilbu-ink);
+}
 .header-socials { gap:8px; }
 .footer-socials { gap:10px; }
 
