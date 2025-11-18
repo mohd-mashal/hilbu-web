@@ -2,6 +2,64 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import "./Home.css";
 
+/* === Social icons === */
+type SocialKind = "instagram" | "facebook" | "tiktok" | "linkedin" | "youtube";
+
+function SocialIcon({ kind, href }: { kind: SocialKind; href: string }) {
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      aria-label={kind}
+      className="social-btn"
+      title={kind.charAt(0).toUpperCase() + kind.slice(1)}
+    >
+      {/* SVGs use currentColor to match button color */}
+      {kind === "instagram" && (
+        <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+          <path
+            fill="currentColor"
+            d="M12 2.8c3.2 0 3.6 0 4.9.1 1.2.1 1.9.2 2.4.5.6.2 1 .5 1.5 1s.7.9 1 1.5c.2.5.4 1.2.5 2.4.1 1.3.1 1.7.1 4.9s0 3.6-.1 4.9c-.1 1.2-.2 1.9-.5 2.4-.2.6-.5 1-1 1.5s-.9.7-1.5 1c-.5.2-1.2.4-2.4.5-1.3.1-1.7.1-4.9.1s-3.6 0-4.9-.1c-1.2-.1-1.9-.2-2.4-.5-.6-.2-1-.5-1.5-1s-.7-.9-1-1.5c-.2-.5-.4-1.2-.5-2.4C2.8 15.6 2.8 15.2 2.8 12s0-3.6.1-4.9c.1-1.2.2-1.9.5-2.4.2-.6.5-1 1-1.5s.9-.7 1.5-1c.5-.2 1.2-.4 2.4-.5C8.4 2.8 8.8 2.8 12 2.8Zm0 1.8c-3.2 0-3.5 0-4.8.1-1 .1-1.6.2-2 .4-.5.2-.8.4-1.2.8-.4.4-.6.7-.8 1.2-.2.4-.3 1-.4 2-.1 1.3-.1 1.6-.1 4.8s0 3.5.1 4.8c.1 1 .2 1.6.4 2 .2.5.4.8.8 1.2.4.4.7.6 1.2.8.4.2 1 .3 2 .4 1.3.1 1.6.1 4.8.1s3.5 0 4.8-.1c1-.1 1.6-.2 2-.4.5-.2.8-.4 1.2-.8.4-.4.6-.7.8-1.2.2-.4.3-1 .4-2 .1-1.3.1-1.6.1-4.8s0-3.5-.1-4.8c-.1-1-.2-1.6-.4-2-.2-.5-.4-.8-.8-1.2-.4-.4-.7-.6-1.2-.8-.4-.2-1-.3-2-.4-1.3-.1-1.6-.1-4.8-.1Zm0 3.4A6.99 6.99 0 1 1 12 19a6.99 6.99 0 0 1 0-14Zm0 2a5 5 0 1 0 0 10 5 5 0 0 0 0-10Zm5.7-1.2a1.3 1.3 0 1 1-2.6 0 1.3 1.3 0 0 1 2.6 0Z"
+          />
+        </svg>
+      )}
+      {kind === "facebook" && (
+        <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+          <path
+            fill="currentColor"
+            d="M22 12a10 10 0 1 0-11.6 9.9v-7H7.9V12H10.4V9.8c0-2.5 1.5-3.9 3.7-3.9 1.1 0 2.3.2 2.3.2v2.5h-1.3c-1.3 0-1.7.8-1.7 1.6V12h2.9l-.5 2.9h-2.4v7A10 10 0 0 0 22 12Z"
+          />
+        </svg>
+      )}
+      {kind === "tiktok" && (
+        <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+          <path
+            fill="currentColor"
+            d="M20 8.2a6.7 6.7 0 0 1-3.8-1.2v7.2c0 3-2.5 5.6-5.6 5.6S5 17.2 5 14.1s2.5-5.6 5.6-5.6c.4 0 .9 0 1.3.1v2.7a3 3 0 0 0-1.3-.3c-1.6 0-2.9 1.3-2.9 3s1.3 3 3 3c1.6 0 2.9-1.3 2.9-3V3.3h2.6A4 4 0 0 0 18 6a4 4 0 0 0 2 .5V8.2Z"
+          />
+        </svg>
+      )}
+      {kind === "linkedin" && (
+        <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+          <path
+            fill="currentColor"
+            d="M4.98 3.5a2.25 2.25 0 1 1 0 4.5 2.25 2.25 0 0 1 0-4.5ZM3.5 9h3v12h-3V9Zm6 0h2.9v1.6h.1c.4-.8 1.6-1.7 3.2-1.7 3.4 0 4 2.2 4 5v7.1h-3V14.8c0-1.3 0-3-1.8-3s-2.1 1.4-2.1 2.9V21h-3V9Z"
+          />
+        </svg>
+      )}
+      {kind === "youtube" && (
+        <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+          <path
+            fill="currentColor"
+            d="M23 12s0-3-.4-4.4c-.2-.9-.9-1.6-1.8-1.8C18.4 5.3 12 5.3 12 5.3s-6.4 0-8.8.5c-.9.2-1.6.9-1.8 1.8C1 9 1 12 1 12s0 3 .4 4.4c.2.9.9 1.6 1.8 1.8 2.4.5 8.8.5 8.8.5s6.4 0 8.8-.5c.9-.2 1.6-.9 1.8-1.8.4-1.4.4-4.4.4-4.4ZM9.8 15.3V8.7l6.1 3.3-6.1 3.3Z"
+          />
+        </svg>
+      )}
+    </a>
+  );
+}
+
 /* === Store badges with QR (used in CTA band) === */
 function StoreBadgeWithQR({
   imgSrc,
@@ -83,6 +141,15 @@ export default function Home() {
   const ANDROID_URL =
     "https://play.google.com/store/apps/details?id=com.hilbu.recovery";
 
+  /* Replace these URLs with your real profiles */
+  const socials = {
+    instagram: "https://instagram.com/hilbu",
+    facebook: "https://facebook.com/hilbu",
+    tiktok: "https://www.tiktok.com/@hilbu",
+    linkedin: "https://www.linkedin.com/company/hilbu",
+    youtube: "https://www.youtube.com/@hilbu",
+  };
+
   return (
     <div className="home-container">
       {/* ===== Fixed Header ===== */}
@@ -95,6 +162,15 @@ export default function Home() {
         <nav className="header-right">
           <Link to="/terms" className="header-pill">Terms &amp; Conditions</Link>
           <Link to="/privacy" className="header-pill">Privacy Policy</Link>
+
+          {/* Header Socials */}
+          <div className="socials header-socials">
+            <SocialIcon kind="instagram" href={socials.instagram} />
+            <SocialIcon kind="facebook" href={socials.facebook} />
+            <SocialIcon kind="tiktok" href={socials.tiktok} />
+            <SocialIcon kind="linkedin" href={socials.linkedin} />
+            <SocialIcon kind="youtube" href={socials.youtube} />
+          </div>
         </nav>
       </div>
       <div className="header-spacer" />
@@ -233,6 +309,15 @@ export default function Home() {
         <div className="footer-links">
           <Link to="/terms" className="footer-link">Terms &amp; Conditions</Link>
           <Link to="/privacy" className="footer-link">Privacy Policy</Link>
+
+          {/* Footer Socials */}
+          <div className="socials footer-socials">
+            <SocialIcon kind="instagram" href={socials.instagram} />
+            <SocialIcon kind="facebook" href={socials.facebook} />
+            <SocialIcon kind="tiktok" href={socials.tiktok} />
+            <SocialIcon kind="linkedin" href={socials.linkedin} />
+            <SocialIcon kind="youtube" href={socials.youtube} />
+          </div>
         </div>
       </footer>
     </div>
