@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from 'react';
-import MapComponent from '../components/MapComponent.web';
 import { collection, getDocs, query, orderBy, limit } from 'firebase/firestore';
 import { firestore } from '../firebaseConfig';
 
@@ -14,12 +13,57 @@ type ScreenKey =
   | 'payouts'
   | 'support';
 
-const toText = (v: any) =>
-  typeof v === 'string' ? v : v?.address ?? '';
+const toText = (v: any) => (typeof v === 'string' ? v : v?.address ?? '');
+
+// Nice status text
+const prettyStatus = (s?: string) => {
+  const v = (s || '').toLowerCase();
+  switch (v) {
+    case 'pending':
+      return 'Pending';
+    case 'accepted':
+    case 'assigned':
+      return 'Accepted';
+    case 'on_the_way':
+      return 'On the way';
+    case 'arrived':
+      return 'Arrived';
+    case 'completed':
+      return 'Completed';
+    case 'cancelled':
+    case 'canceled':
+      return 'Cancelled';
+    default:
+      return v || 'Unknown';
+  }
+};
+
+// Status badge color
+const statusColor = (s?: string) => {
+  const v = (s || '').toLowerCase();
+  switch (v) {
+    case 'pending':
+      return '#FFB347'; // orange
+    case 'accepted':
+    case 'assigned':
+      return '#4C8DFF'; // blue
+    case 'on_the_way':
+      return '#9B59B6'; // purple
+    case 'arrived':
+      return '#7F8C8D'; // grey
+    case 'completed':
+      return '#2ECC71'; // green
+    case 'cancelled':
+    case 'canceled':
+      return '#E74C3C'; // red
+    default:
+      return '#888888';
+  }
+};
 
 export default function Dashboard({ setActiveTab }: { setActiveTab: (tab: ScreenKey) => void }) {
   const [ready, setReady] = useState(false);
-  const [tab, setTab] = useState<'overview' | 'analytics'>('overview');
+  const [tab, setTab] = useState<'overview' | 'liveactivity'>('overview');
   const [refreshing, setRefreshing] = useState(false);
 
   const [totalUsers, setTotalUsers] = useState(0);
@@ -61,7 +105,7 @@ export default function Dashboard({ setActiveTab }: { setActiveTab: (tab: Screen
     try {
       const jobsQuery = query(
         collection(firestore, 'recovery_requests'),
-        orderBy('timestamp', 'desc'),
+        orderBy('createdAt', 'desc'),
         limit(5)
       );
       const jobsSnap = await getDocs(jobsQuery);
@@ -96,6 +140,7 @@ export default function Dashboard({ setActiveTab }: { setActiveTab: (tab: Screen
         </button>
       </div>
 
+      {/* Top tabs */}
       <div style={styles.tabs}>
         <button
           onClick={() => setTab('overview')}
@@ -106,46 +151,87 @@ export default function Dashboard({ setActiveTab }: { setActiveTab: (tab: Screen
           </span>
         </button>
         <button
-          onClick={() => setTab('analytics')}
-          style={{ ...styles.tab, ...(tab === 'analytics' ? styles.activeTab : {}) }}
+          onClick={() => {
+            setTab('liveactivity');
+            setActiveTab('liveactivity'); // go to Live Activity page
+          }}
+          style={{ ...styles.tab, ...(tab === 'liveactivity' ? styles.activeTab : {}) }}
         >
-          <span style={{ ...styles.tabText, ...(tab === 'analytics' ? styles.activeTabText : {}) }}>
-            Analytics
+          <span
+            style={{ ...styles.tabText, ...(tab === 'liveactivity' ? styles.activeTabText : {}) }}
+          >
+            Live Activity
           </span>
         </button>
       </div>
 
+      {/* OVERVIEW TAB */}
       {tab === 'overview' && (
         <>
           <h2 style={styles.sectionTitle}>📊 Live Overview</h2>
           <div style={styles.cardRow}>
-            <Card label="👤 Total Users" value={totalUsers} sub="active this month" onPress={() => setActiveTab('users')} />
-            <Card label="🚗 Total Drivers" value={totalDrivers} sub="registered" onPress={() => setActiveTab('drivers')} />
-            <Card label="🛣️ Total Trips" value={totalTrips} sub="completed" onPress={() => setActiveTab('trips')} />
-            <Card label="💰 Payout Requests" value={totalPayouts} sub="pending" onPress={() => setActiveTab('payouts')} />
+            <Card
+              label="👤 Total Users"
+              value={totalUsers}
+              sub="active this month"
+              onPress={() => setActiveTab('users')}
+            />
+            <Card
+              label="🚗 Total Drivers"
+              value={totalDrivers}
+              sub="registered"
+              onPress={() => setActiveTab('drivers')}
+            />
+            <Card
+              label="🛣️ Total Trips"
+              value={totalTrips}
+              sub="completed"
+              onPress={() => setActiveTab('trips')}
+            />
+            <Card
+              label="💰 Payout Requests"
+              value={totalPayouts}
+              sub="pending"
+              onPress={() => setActiveTab('payouts')}
+            />
           </div>
         </>
       )}
 
-      {tab === 'analytics' && (
-        <div style={styles.mapContainer}>
-          <h3 style={styles.mapTitle}>Live Map</h3>
-          <div style={{ height: '60vh', minHeight: 420, borderRadius: 12, overflow: 'hidden' }}>
-            <MapComponent />
-          </div>
-        </div>
-      )}
-
-      <div style={styles.logsContainer}>
-        <h3 style={styles.sectionTitle}>📝 Recent Recovery Jobs</h3>
+      {/* RECENT JOBS – improved visual style */}
+      <div style={styles.jobsBlock}>
+        <h3 style={styles.sectionTitle}>📄 Recent Recovery Jobs</h3>
         {recentJobs.length === 0 ? (
-          <p style={styles.logText}>No recent recovery jobs found.</p>
+          <p style={styles.noJobs}>No recent recovery jobs found.</p>
         ) : (
-          recentJobs.map((job) => (
-            <p key={job.id} style={styles.logText}>
-              • {job.pickupAddress || toText(job.pickup)} → {job.dropoffAddress || toText(job.dropoff)} ({job.status || '—'})
-            </p>
-          ))
+          <div style={styles.jobsList}>
+            {recentJobs.map((job) => (
+              <div key={job.id} style={styles.jobCard}>
+                <div style={styles.jobTopRow}>
+                  <span style={styles.jobRoute}>
+                    {job.pickupAddress || toText(job.pickup)} →{' '}
+                    {job.dropoffAddress || toText(job.dropoff)}
+                  </span>
+                  <span
+                    style={{
+                      ...styles.statusBadge,
+                      backgroundColor: statusColor(job.status),
+                    }}
+                  >
+                    {prettyStatus(job.status)}
+                  </span>
+                </div>
+                <div style={styles.jobMetaRow}>
+                  {job.userPhone && (
+                    <span style={styles.jobMetaItem}>User: {job.userPhone}</span>
+                  )}
+                  {job.driverPhone && (
+                    <span style={styles.jobMetaItem}>Driver: {job.driverPhone}</span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
         )}
       </div>
     </div>
@@ -172,11 +258,13 @@ function Card({
       }}
       onMouseEnter={(e) => {
         (e.currentTarget as HTMLDivElement).style.transform = 'scale(1.03)';
-        (e.currentTarget as HTMLDivElement).style.boxShadow = '0 6px 14px rgba(0,0,0,0.15)';
+        (e.currentTarget as HTMLDivElement).style.boxShadow =
+          '0 6px 14px rgba(0,0,0,0.15)';
       }}
       onMouseLeave={(e) => {
         (e.currentTarget as HTMLDivElement).style.transform = 'scale(1)';
-        (e.currentTarget as HTMLDivElement).style.boxShadow = '0 4px 6px rgba(0,0,0,0.1)';
+        (e.currentTarget as HTMLDivElement).style.boxShadow =
+          '0 4px 6px rgba(0,0,0,0.1)';
       }}
     >
       <p style={styles.cardLabel}>{label}</p>
@@ -290,26 +378,53 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#333',
     marginTop: 4,
   },
-  mapContainer: {
-    borderRadius: 16,
-    overflow: 'hidden',
-    border: '1px solid #ccc',
-    marginBottom: 30,
-    padding: 8,
+
+  // recent jobs styles
+  jobsBlock: {
+    marginTop: 24,
   },
-  mapTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 10,
-    color: '#000',
-    textAlign: 'center',
-  },
-  logsContainer: {
-    marginTop: 30,
-  },
-  logText: {
+  noJobs: {
     fontSize: 14,
-    color: '#333',
+    color: '#555',
+  },
+  jobsList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 12,
+  },
+  jobCard: {
+    backgroundColor: '#f7f7f7',
+    borderRadius: 12,
+    padding: 14,
+    border: '1px solid #eee',
+  },
+  jobTopRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 8,
     marginBottom: 6,
+  },
+  jobRoute: {
+    fontSize: 14,
+    color: '#000',
+    fontWeight: 500,
+  },
+  statusBadge: {
+    fontSize: 12,
+    color: '#fff',
+    padding: '4px 10px',
+    borderRadius: 999,
+    fontWeight: 600,
+    whiteSpace: 'nowrap',
+  },
+  jobMetaRow: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  jobMetaItem: {
+    fontSize: 12,
+    color: '#555',
   },
 };

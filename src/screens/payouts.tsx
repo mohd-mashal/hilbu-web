@@ -13,21 +13,6 @@ import {
   serverTimestamp,
 } from 'firebase/firestore';
 
-// If you have a shared notifications util in web, import it.
-// Otherwise these no-ops will safely skip push without breaking UI.
-let sendPushNotificationToUser: undefined | ((
-  identifier: string,
-  title: string,
-  message: string
-) => Promise<void>);
-try {
-  // Adjust path if your admin project structure differs
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  sendPushNotificationToUser = require('../utils/notifications')?.sendPushNotificationToUser;
-} catch (_) {
-  sendPushNotificationToUser = undefined;
-}
-
 interface Payout {
   id: string;
   driverId?: string;
@@ -37,18 +22,126 @@ interface Payout {
   iban?: string;
   amount?: number; // NET to driver (80%)
   status?: 'pending' | 'approved' | 'rejected';
-  timestamp?: string; // ISO or server timestamp
+  timestamp?: string; // request time
+  bankRef?: string;
+  paidAt?: string;
+  paidBy?: string;
+  reason?: string;
+  receiptUrl?: string;
 }
 
 const COMMISSION = 0.20;
 const PAYOUT_RATE = 1 - COMMISSION; // 0.8
+
+// ✅ Same normalization style as your mobile notifications file
+const normalizeE164 = (phone?: string | null) => {
+  if (!phone) return '';
+  let clean = (phone || '').replace(/\D/g, '');
+  if (clean.startsWith('00')) clean = clean.slice(2);
+  if (!clean.startsWith('971') && clean.length > 0 && clean[0] === '0') clean = clean.slice(1);
+  return clean.length ? `+${clean}` : '';
+};
+const noPlus = (phone?: string | null) => (phone || '').replace(/\s/g, '').replace(/^\+/, '');
 
 export default function AdminPayouts() {
   const [requests, setRequests] = useState<Payout[]>([]);
   const [loading, setLoading] = useState(true);
   const db = getFirebaseDB();
 
-  // Real-time listener for payout requests
+  // ✅ Send Expo push (same endpoint family you use in app)
+  const sendExpoPush = async (expoPushToken: string, title: string, body: string) => {
+    try {
+      if (!expoPushToken) return;
+
+      // Don’t over-restrict prefix, just ensure it looks like a push token
+      const ok =
+        expoPushToken.includes('PushToken') || expoPushToken.includes('ExponentPushToken');
+      if (!ok) return;
+
+      await fetch('https://api.expo.dev/v2/push/send', {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Accept-encoding': 'gzip, deflate',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          to: expoPushToken,
+          sound: 'default',
+          title,
+          body,
+          data: { type: 'payout' },
+          priority: 'high',
+        }),
+      }).catch(() => {});
+    } catch (e) {
+      console.error('sendExpoPush error:', e);
+    }
+  };
+
+  // ✅ Robust driver token lookup (matches your saving locations)
+  const getDriverPushToken = async (driverIdRaw: string): Promise<string | null> => {
+    try {
+      const driverId = (driverIdRaw || '').toString().trim();
+      if (!driverId) return null;
+
+      // Try direct drivers/{driverId}
+      const d1 = await getDoc(doc(db, 'drivers', driverId));
+      if (d1.exists()) {
+        const data: any = d1.data();
+        const token =
+          data.expoPushToken ||
+          data.pushToken ||
+          data.notificationToken ||
+          data.expo_token ||
+          null;
+        if (token && typeof token === 'string') return token;
+      }
+
+      // If driverId is phone-like, try normalized docId without +
+      const e164 = normalizeE164(driverId);
+      const key = noPlus(e164);
+
+      if (key) {
+        const d2 = await getDoc(doc(db, 'drivers', key));
+        if (d2.exists()) {
+          const data: any = d2.data();
+          const token =
+            data.expoPushToken ||
+            data.pushToken ||
+            data.notificationToken ||
+            data.expo_token ||
+            null;
+          if (token && typeof token === 'string') return token;
+        }
+      }
+
+      // Try drivers_by_phone/+E164 and drivers_by_phone/noPlus(E164)
+      if (e164) {
+        const p1 = await getDoc(doc(db, 'drivers_by_phone', e164));
+        if (p1.exists()) {
+          const data: any = p1.data();
+          const token = data.expoPushToken || data.pushToken || null;
+          if (token && typeof token === 'string') return token;
+        }
+
+        if (key) {
+          const p2 = await getDoc(doc(db, 'drivers_by_phone', key));
+          if (p2.exists()) {
+            const data: any = p2.data();
+            const token = data.expoPushToken || data.pushToken || null;
+            if (token && typeof token === 'string') return token;
+          }
+        }
+      }
+
+      return null;
+    } catch (e) {
+      console.error('getDriverPushToken error:', e);
+      return null;
+    }
+  };
+
   useEffect(() => {
     const qy = query(collection(db, 'payout_requests'), orderBy('timestamp', 'desc'));
     const unsubscribe = onSnapshot(
@@ -56,12 +149,28 @@ export default function AdminPayouts() {
       (snapshot) => {
         const data: Payout[] = snapshot.docs.map((d) => {
           const raw: any = d.data();
+          const tsRaw = raw.timestamp;
+          const paidRaw = raw.paidAt;
+
           const ts =
-            typeof raw.timestamp === 'string'
-              ? raw.timestamp
-              : raw.timestamp?.toDate?.()?.toISOString?.() || new Date().toISOString();
-          return { id: d.id, ...raw, timestamp: ts } as Payout;
+            typeof tsRaw === 'string'
+              ? tsRaw
+              : tsRaw?.toDate?.()?.toISOString?.() || new Date().toISOString();
+
+          const paidAt =
+            paidRaw &&
+            (typeof paidRaw === 'string'
+              ? paidRaw
+              : paidRaw?.toDate?.()?.toISOString?.() || '');
+
+          return {
+            id: d.id,
+            ...raw,
+            timestamp: ts,
+            paidAt,
+          } as Payout;
         });
+
         setRequests(data);
         setLoading(false);
       },
@@ -74,47 +183,75 @@ export default function AdminPayouts() {
     return () => unsubscribe();
   }, [db]);
 
-  // Approve payout: mark approved, log notification, try push to driver
   const approve = async (id: string) => {
     try {
-      const ref = doc(db, 'payout_requests', id);
-      const snap = await getDoc(ref);
+      const refDoc = doc(db, 'payout_requests', id);
+      const snap = await getDoc(refDoc);
       if (!snap.exists()) throw new Error('Missing request');
       const req = snap.data() as any;
 
-      await updateDoc(ref, { status: 'approved' });
+      const bankRefInput =
+        window.prompt(
+          'Enter bank transfer reference (SWIFT / Ref No.). If you don’t have it now, type: PENDING',
+          req.bankRef || 'PENDING'
+        ) || 'PENDING';
 
-      // Optional: record an admin-side transfer log
+      const paidByInput =
+        window.prompt('Enter your name or initials (required):', req.paidBy || '') || '';
+
+      const paidByFinal = paidByInput.trim() ? paidByInput.trim() : 'Admin';
+      const bankRefFinal = bankRefInput.trim() ? bankRefInput.trim() : 'PENDING';
+
+      await updateDoc(refDoc, {
+        status: 'approved',
+        paidAt: serverTimestamp(),
+        bankRef: bankRefFinal,
+        paidBy: paidByFinal,
+      });
+
       await addDoc(collection(db, 'transfers'), {
         payoutRequestId: id,
         driverId: req.driverId || '',
         amount: Number(req.amount || 0),
         status: 'approved',
         approvedAt: serverTimestamp(),
+        bankRef: bankRefFinal,
+        approvedBy: paidByFinal,
       }).catch(() => {});
 
-      // Add a notification document (for audit/UI)
+      const msg = `✅ Your payout of AED ${Number(req.amount || 0).toFixed(2)} has been approved.${
+        bankRefFinal ? ` Ref: ${bankRefFinal}` : ''
+      }`;
+
       await addDoc(collection(db, 'notifications'), {
         type: 'payout_approved',
         title: 'Payout Approved',
-        message: `Your payout of AED ${Number(req.amount || 0).toFixed(2)} has been approved.`,
+        message: msg,
         audience: req.driverId || 'driver',
         createdAt: serverTimestamp(),
       }).catch(() => {});
 
-      // Try to push to the driver (look up driver's identifier if needed)
-      if (sendPushNotificationToUser) {
-        // Use driverId directly if your notification util accepts it (email/phone/id)
-        try {
-          await sendPushNotificationToUser(
-            req.driverId || '',
-            'Payout Approved',
-            `✅ AED ${Number(req.amount || 0).toFixed(2)} has been approved.`
-          );
-        } catch (_) {}
+      const driverToken = await getDriverPushToken((req.driverId || '').toString());
+      if (driverToken) {
+        await sendExpoPush(driverToken, 'Payout Approved', msg);
+      } else {
+        console.warn('No driver push token found for:', req.driverId);
       }
 
-      setRequests((prev) => prev.map((r) => (r.id === id ? { ...r, status: 'approved' } : r)));
+      setRequests((prev) =>
+        prev.map((r) =>
+          r.id === id
+            ? {
+                ...r,
+                status: 'approved',
+                bankRef: bankRefFinal,
+                paidBy: paidByFinal,
+                paidAt: new Date().toISOString(),
+              }
+            : r
+        )
+      );
+
       alert('✅ Payout Approved');
     } catch (error) {
       console.error('Error approving payout:', error);
@@ -122,35 +259,38 @@ export default function AdminPayouts() {
     }
   };
 
-  // (Optional) Reject payout if you need it later
-  const reject = async (id: string, reason = 'Not eligible') => {
+  const reject = async (id: string, defaultReason = 'Not eligible') => {
     try {
-      const ref = doc(db, 'payout_requests', id);
-      const snap = await getDoc(ref);
+      const reasonInput = window.prompt('Reason for rejection:', defaultReason) || defaultReason;
+
+      const refDoc = doc(db, 'payout_requests', id);
+      const snap = await getDoc(refDoc);
       if (!snap.exists()) throw new Error('Missing request');
       const req = snap.data() as any;
 
-      await updateDoc(ref, { status: 'rejected', reason });
+      await updateDoc(refDoc, { status: 'rejected', reason: reasonInput });
+
+      const msg = `❌ Your payout request was rejected. Reason: ${reasonInput}`;
 
       await addDoc(collection(db, 'notifications'), {
         type: 'payout_rejected',
         title: 'Payout Rejected',
-        message: `Your payout request was rejected. Reason: ${reason}`,
+        message: msg,
         audience: req.driverId || 'driver',
         createdAt: serverTimestamp(),
       }).catch(() => {});
 
-      if (sendPushNotificationToUser) {
-        try {
-          await sendPushNotificationToUser(
-            req.driverId || '',
-            'Payout Rejected',
-            `❌ Your payout request was rejected. Reason: ${reason}`
-          );
-        } catch (_) {}
+      const driverToken = await getDriverPushToken((req.driverId || '').toString());
+      if (driverToken) {
+        await sendExpoPush(driverToken, 'Payout Rejected', msg);
+      } else {
+        console.warn('No driver push token found for:', req.driverId);
       }
 
-      setRequests((prev) => prev.map((r) => (r.id === id ? { ...r, status: 'rejected' } : r)));
+      setRequests((prev) =>
+        prev.map((r) => (r.id === id ? { ...r, status: 'rejected', reason: reasonInput } : r))
+      );
+
       alert('⚠️ Payout Rejected');
     } catch (error) {
       console.error('Error rejecting payout:', error);
@@ -158,7 +298,6 @@ export default function AdminPayouts() {
     }
   };
 
-  // Totals: amount is NET to driver (80%). Derive gross & commission from it.
   const totals = useMemo(() => {
     const netSum = requests.reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
     const grossEq = netSum / PAYOUT_RATE;
@@ -169,6 +308,21 @@ export default function AdminPayouts() {
       commission: +commission.toFixed(2),
     };
   }, [requests]);
+
+  const formatDate = (val?: string) => {
+    if (!val) return '';
+    try {
+      return new Date(val).toLocaleString('en-GB', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+    } catch {
+      return val;
+    }
+  };
 
   if (loading) {
     return (
@@ -202,31 +356,35 @@ export default function AdminPayouts() {
 
       <div style={styles.list}>
         {requests.map((item) => {
-          const net = Number(item.amount) || 0; // driver's payout (80%)
-          const gross = net / PAYOUT_RATE; // derived gross
+          const net = Number(item.amount) || 0;
+          const gross = net / PAYOUT_RATE;
           const commission = gross * COMMISSION;
-          const when = item.timestamp
-            ? new Date(item.timestamp).toLocaleString('en-GB', {
-                year: 'numeric',
-                month: 'short',
-                day: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit',
-              })
-            : '';
+          const whenRequested = item.timestamp ? formatDate(item.timestamp) : '';
+          const whenPaid = item.paidAt ? formatDate(item.paidAt) : '';
 
           return (
             <div key={item.id} style={styles.card}>
-              <p style={styles.row}><strong>📅 Requested:</strong> {when || '—'}</p>
+              <p style={styles.row}><strong>📅 Requested:</strong> {whenRequested || '—'}</p>
               <p style={styles.row}><strong>👤 Driver:</strong> {item.driverId || '—'}</p>
               <p style={styles.row}><strong>👤 Account Name:</strong> {item.accountName || 'N/A'}</p>
               <p style={styles.row}><strong>🏦 Bank:</strong> {item.bankName || 'N/A'} - {item.accountNumber || 'N/A'}</p>
               <p style={styles.row}><strong>IBAN:</strong> {item.iban || 'N/A'}</p>
 
-              {/* Net/gross breakdown (admin-only) */}
               <p style={styles.row}><strong>💰 Requested (Net to Driver):</strong> AED {net.toFixed(2)}</p>
               <p style={styles.row}><strong>🧾 Gross Equivalent:</strong> AED {gross.toFixed(2)}</p>
               <p style={styles.row}><strong>💼 HILBU Commission (20%):</strong> AED {commission.toFixed(2)}</p>
+
+              {item.status === 'approved' && (
+                <>
+                  <p style={styles.row}><strong>✅ Paid on:</strong> {whenPaid || '—'}</p>
+                  <p style={styles.row}><strong>Ref:</strong> {item.bankRef || '—'}</p>
+                  <p style={styles.row}><strong>Processed by:</strong> {item.paidBy || '—'}</p>
+                </>
+              )}
+
+              {item.status === 'rejected' && item.reason && (
+                <p style={{ ...styles.row, color: '#cc0000' }}><strong>Reason:</strong> {item.reason}</p>
+              )}
 
               <p
                 style={{
@@ -266,18 +424,8 @@ export default function AdminPayouts() {
 }
 
 const styles: Record<string, React.CSSProperties> = {
-  container: {
-    padding: 24,
-    backgroundColor: '#fff',
-    minHeight: '100vh',
-  },
-  title: {
-    fontSize: 26,
-    fontWeight: 'bold',
-    color: '#000',
-    marginBottom: 16,
-    textAlign: 'center',
-  },
+  container: { padding: 24, backgroundColor: '#fff', minHeight: '100vh' },
+  title: { fontSize: 26, fontWeight: 'bold', color: '#000', marginBottom: 16, textAlign: 'center' },
   messageBox: {
     backgroundColor: '#fff4f4',
     padding: 12,
@@ -285,12 +433,7 @@ const styles: Record<string, React.CSSProperties> = {
     marginBottom: 16,
     border: '1px solid #cc0000',
   },
-  warning: {
-    color: '#cc0000',
-    fontSize: 14,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
+  warning: { color: '#cc0000', fontSize: 14, fontWeight: '600', textAlign: 'center' },
   totalsBox: {
     backgroundColor: '#f6f6f6',
     padding: 16,
@@ -298,34 +441,11 @@ const styles: Record<string, React.CSSProperties> = {
     marginBottom: 20,
     border: '1px solid #ddd',
   },
-  totalsText: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#000',
-    marginBottom: 6,
-  },
-  list: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 20,
-    paddingBottom: 100,
-  },
-  card: {
-    backgroundColor: '#FFDC00',
-    padding: 20,
-    borderRadius: 16,
-    boxShadow: '0 4px 8px rgba(0,0,0,0.08)',
-  },
-  row: {
-    fontSize: 16,
-    color: '#000',
-    marginBottom: 6,
-  },
-  status: {
-    marginTop: 10,
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
+  totalsText: { fontSize: 16, fontWeight: 'bold', color: '#000', marginBottom: 6 },
+  list: { display: 'flex', flexDirection: 'column', gap: 20, paddingBottom: 100 },
+  card: { backgroundColor: '#FFDC00', padding: 20, borderRadius: 16, boxShadow: '0 4px 8px rgba(0,0,0,0.08)' },
+  row: { fontSize: 16, color: '#000', marginBottom: 6 },
+  status: { marginTop: 10, fontSize: 16, fontWeight: 'bold' },
   button: {
     marginTop: 14,
     backgroundColor: '#000',
@@ -337,19 +457,6 @@ const styles: Record<string, React.CSSProperties> = {
     border: 'none',
     cursor: 'pointer',
   },
-  loadingContainer: {
-    display: 'flex',
-    justifyContent: 'center',
-    alignItems: 'center',
-    height: '100vh',
-  },
-  loadingText: {
-    fontSize: 20,
-    color: '#000',
-  },
-  noData: {
-    textAlign: 'center',
-    color: '#555',
-    fontSize: 16,
-  },
+  loadingContainer: { display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' },
+  loadingText: { fontSize: 20, color: '#000' },
 };

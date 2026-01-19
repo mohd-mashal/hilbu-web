@@ -1,4 +1,4 @@
-// FILE: src/screens/users.tsx  (replace entire file)
+// FILE: src/screens/users.tsx  
 import React, { useEffect, useState } from 'react';
 import { collection, onSnapshot, updateDoc, doc } from 'firebase/firestore';
 import { firestore } from '../firebaseConfig';
@@ -11,7 +11,7 @@ interface User {
   email?: string;
   phone?: string;
   status?: UserStatus;
-  recovery?: boolean;
+  // recovery?: boolean; // still can exist in Firestore, but we no longer show/use it here
 }
 
 export default function AdminUsers() {
@@ -37,7 +37,6 @@ export default function AdminUsers() {
     return () => unsub();
   }, []);
 
-  // Clear names for buttons so it’s obvious
   const setStatus = async (id: string, to: 'active' | 'suspended') => {
     if (!window.confirm(`Set this user to ${to.toUpperCase()}?`)) return;
     try {
@@ -46,17 +45,6 @@ export default function AdminUsers() {
     } catch (e) {
       console.error('Status update failed:', e);
       alert('Failed to update status.');
-    }
-  };
-
-  const setRecovery = async (id: string, to: boolean) => {
-    if (!window.confirm(`${to ? 'Enable' : 'Disable'} recovery for this user?`)) return;
-    try {
-      await updateDoc(doc(firestore, 'users', id), { recovery: to });
-      alert('User recovery updated.');
-    } catch (e) {
-      console.error('Recovery update failed:', e);
-      alert('Failed to update recovery.');
     }
   };
 
@@ -110,10 +98,7 @@ export default function AdminUsers() {
           {filteredUsers.map((u) => {
             const status = (u.status as UserStatus) ?? 'active';
             const isActive = status === 'active';
-            const hasRecovery = !!u.recovery;
-
             const statusBtnLabel = isActive ? 'Set Suspended' : 'Set Active';
-            const recoveryBtnLabel = hasRecovery ? 'Disable Recovery' : 'Enable Recovery';
 
             return (
               <div key={u.id} style={styles.card}>
@@ -129,9 +114,6 @@ export default function AdminUsers() {
                 <p style={styles.label}>
                   ⚙️ Status: <span style={styles.value}>{status}</span>
                 </p>
-                <p style={styles.label}>
-                  🛠 Recovery: <span style={styles.value}>{hasRecovery ? 'Yes' : 'No'}</span>
-                </p>
 
                 <div style={styles.buttons}>
                   <button
@@ -139,12 +121,6 @@ export default function AdminUsers() {
                     onClick={() => setStatus(u.id, isActive ? 'suspended' : 'active')}
                   >
                     {statusBtnLabel}
-                  </button>
-                  <button
-                    style={styles.button}
-                    onClick={() => setRecovery(u.id, !hasRecovery)}
-                  >
-                    {recoveryBtnLabel}
                   </button>
                 </div>
               </div>
@@ -157,20 +133,66 @@ export default function AdminUsers() {
 }
 
 const styles: { [k: string]: React.CSSProperties } = {
-  container: { padding: 24, backgroundColor: '#fff', minHeight: '100vh', fontFamily: 'Arial, sans-serif' },
-  title: { fontSize: 26, fontWeight: 'bold', color: '#000', marginBottom: 24, textAlign: 'center' },
+  container: {
+    padding: 24,
+    backgroundColor: '#fff',
+    minHeight: '100vh',
+    fontFamily: 'Arial, sans-serif',
+  },
+  title: {
+    fontSize: 26,
+    fontWeight: 'bold',
+    color: '#000',
+    marginBottom: 24,
+    textAlign: 'center',
+  },
 
-  searchContainer: { display: 'flex', gap: 12, marginBottom: 20, justifyContent: 'center' },
-  searchInput: { padding: '8px 12px', borderRadius: 8, border: '1px solid #ccc', width: 220 },
-  filterSelect: { padding: '8px 12px', borderRadius: 8, border: '1px solid #ccc' },
+  searchContainer: {
+    display: 'flex',
+    gap: 12,
+    marginBottom: 20,
+    justifyContent: 'center',
+  },
+  searchInput: {
+    padding: '8px 12px',
+    borderRadius: 8,
+    border: '1px solid #ccc',
+    width: 220,
+  },
+  filterSelect: {
+    padding: '8px 12px',
+    borderRadius: 8,
+    border: '1px solid #ccc',
+  },
 
-  list: { display: 'flex', flexDirection: 'column', gap: 20 },
-  card: { backgroundColor: '#FFDC00', padding: 20, borderRadius: 16, boxShadow: '0 2px 6px rgba(0,0,0,0.1)' },
+  list: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 20,
+  },
+  card: {
+    backgroundColor: '#FFDC00',
+    padding: 20,
+    borderRadius: 16,
+    boxShadow: '0 2px 6px rgba(0,0,0,0.1)',
+  },
 
-  label: { fontSize: 16, fontWeight: 'bold', color: '#000', marginBottom: 6 },
-  value: { fontWeight: 'normal' },
+  label: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#000',
+    marginBottom: 6,
+  },
+  value: {
+    fontWeight: 'normal',
+  },
 
-  buttons: { display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 12 },
+  buttons: {
+    display: 'flex',
+    gap: 10,
+    flexWrap: 'wrap',
+    marginTop: 12,
+  },
   button: {
     backgroundColor: '#000',
     color: '#FFDC00',
@@ -182,7 +204,20 @@ const styles: { [k: string]: React.CSSProperties } = {
     transition: 'opacity .2s ease',
   },
 
-  loadingContainer: { display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', backgroundColor: '#fff' },
-  loadingText: { fontSize: 20, color: '#000' },
-  noData: { textAlign: 'center', color: '#555', fontSize: 16 },
+  loadingContainer: {
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+    height: '100vh',
+    backgroundColor: '#fff',
+  },
+  loadingText: {
+    fontSize: 20,
+    color: '#000',
+  },
+  noData: {
+    textAlign: 'center',
+    color: '#555',
+    fontSize: 16,
+  },
 };

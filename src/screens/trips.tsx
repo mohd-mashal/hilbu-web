@@ -10,27 +10,41 @@ interface TripData {
   amount: number;
   pickup?: string;
   dropoff?: string;
+  status?: string;
+  paymentStatus?: string;
+  commission: number;
+  earnings: number;
 }
 
 export default function AdminTrips() {
   const [trips, setTrips] = useState<TripData[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // 🔎 Filters
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [paymentFilter, setPaymentFilter] = useState<string>('all');
+  const [driverFilter, setDriverFilter] = useState<string>('');
+
   useEffect(() => {
     const fetchTrips = async () => {
-      const db = getFirebaseDB(); // ✅ use the same DB getter as other admin pages
+      const db = getFirebaseDB(); // ✅ same DB getter as other admin pages
       try {
         const tripsSnap = await getDocs(collection(db, 'trip_history_driver'));
 
         const tripsData: TripData[] = tripsSnap.docs.map((docSnap) => {
           const data: any = docSnap.data();
 
-          // timestamp: can be Firestore Timestamp, ISO string, or Date
+          // timestamp: Firestore Timestamp, ISO string, number, or createdAt
           let dt: Date;
           if (data?.timestamp?.toDate) {
             dt = data.timestamp.toDate();
-          } else if (typeof data?.timestamp === 'string' || typeof data?.timestamp === 'number') {
+          } else if (
+            typeof data?.timestamp === 'string' ||
+            typeof data?.timestamp === 'number'
+          ) {
             dt = new Date(data.timestamp);
+          } else if (data?.createdAt?.toDate) {
+            dt = data.createdAt.toDate();
           } else {
             dt = new Date();
           }
@@ -41,20 +55,39 @@ export default function AdminTrips() {
               ? data.amount
               : parseFloat(String(data?.amount ?? '0').replace(/[^\d.]/g, '')) || 0;
 
-          // pickup / dropoff were saved as objects { address, coords }
+          // pickup / dropoff: string or { address, coords }
           const pickupStr =
             typeof data?.pickup === 'string'
               ? data.pickup
               : data?.pickup?.address || 'N/A';
+
           const dropoffStr =
             typeof data?.dropoff === 'string'
               ? data.dropoff
               : data?.dropoff?.address || 'N/A';
 
+          // status & paymentStatus
+          const rawStatus: string = (data?.status as string) || 'completed';
+          const status = rawStatus.toLowerCase();
+
+          const paymentStatus: string =
+            (data?.paymentStatus as string) || 'unknown';
+
+          // commission & earnings (prefer DB, else 20% rule)
+          const commissionFromDb =
+            typeof data?.commission === 'number' ? data.commission : null;
+          const earningsFromDb =
+            typeof data?.earnings === 'number' ? data.earnings : null;
+
+          const commission =
+            commissionFromDb !== null ? commissionFromDb : amountNum * 0.2; // 20%
+          const earnings =
+            earningsFromDb !== null ? earningsFromDb : amountNum - commission;
+
           return {
             id: docSnap.id,
-            driver: data?.driverPhone || 'Unknown Driver',
-            rider: data?.userPhone || 'Unknown User',
+            driver: data?.driverPhone || data?.driverId || 'Unknown Driver',
+            rider: data?.userPhone || data?.userId || 'Unknown User',
             date: dt.toLocaleDateString('en-GB', {
               year: 'numeric',
               month: 'short',
@@ -65,6 +98,10 @@ export default function AdminTrips() {
             amount: amountNum,
             pickup: pickupStr,
             dropoff: dropoffStr,
+            status,
+            paymentStatus,
+            commission,
+            earnings,
           };
         });
 
@@ -79,6 +116,35 @@ export default function AdminTrips() {
     fetchTrips();
   }, []);
 
+  // ✅ Apply filters
+  const filteredTrips = trips.filter((t) => {
+    // status filter
+    if (statusFilter !== 'all' && (t.status || '') !== statusFilter) {
+      return false;
+    }
+
+    // payment filter
+    if (paymentFilter === 'paid' && (t.paymentStatus || '').toLowerCase() !== 'paid') {
+      return false;
+    }
+    if (paymentFilter === 'unpaid' && (t.paymentStatus || '').toLowerCase() === 'paid') {
+      return false;
+    }
+    if (paymentFilter === 'unknown' && (t.paymentStatus || '').toLowerCase() !== 'unknown') {
+      return false;
+    }
+
+    // driver filter (phone/id contains text)
+    if (
+      driverFilter.trim() &&
+      !t.driver.toLowerCase().includes(driverFilter.trim().toLowerCase())
+    ) {
+      return false;
+    }
+
+    return true;
+  });
+
   if (loading) {
     return (
       <div style={styles.loadingContainer}>
@@ -91,25 +157,103 @@ export default function AdminTrips() {
     <div style={styles.container}>
       <h1 style={styles.title}>🧾 Trip History</h1>
 
+      {/* 🔎 Filters row */}
+      <div style={styles.filtersRow}>
+        <div style={styles.filterBlock}>
+          <label style={styles.filterLabel}>Status</label>
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            style={styles.filterSelect}
+          >
+            <option value="all">All</option>
+            <option value="completed">Completed</option>
+            <option value="pending">Pending</option>
+            <option value="accepted">Accepted</option>
+            <option value="rejected">Rejected</option>
+            <option value="cancelled">Cancelled</option>
+            <option value="on_the_way">On the way</option>
+            <option value="arrived">Arrived</option>
+          </select>
+        </div>
+
+        <div style={styles.filterBlock}>
+          <label style={styles.filterLabel}>Payment</label>
+          <select
+            value={paymentFilter}
+            onChange={(e) => setPaymentFilter(e.target.value)}
+            style={styles.filterSelect}
+          >
+            <option value="all">All</option>
+            <option value="paid">Paid</option>
+            <option value="unpaid">Unpaid</option>
+            <option value="unknown">Unknown</option>
+          </select>
+        </div>
+
+        <div style={styles.filterBlock}>
+          <label style={styles.filterLabel}>Driver (phone / ID)</label>
+          <input
+            type="text"
+            value={driverFilter}
+            onChange={(e) => setDriverFilter(e.target.value)}
+            placeholder="e.g. +9715..."
+            style={styles.filterInput}
+          />
+        </div>
+      </div>
+
       <div style={styles.list}>
-        {trips.length === 0 ? (
-          <p style={styles.noData}>No trips found.</p>
+        {filteredTrips.length === 0 ? (
+          <p style={styles.noData}>No trips found with current filters.</p>
         ) : (
-          trips.map((item) => {
-            const commission = item.amount * 0.2; // HILBU 20%
-            const earnings = item.amount - commission; // ✅ admin-only final earnings
+          filteredTrips.map((item) => {
+            const statusLabel =
+              item.status?.charAt(0).toUpperCase() + (item.status?.slice(1) || '');
+            const payLabel =
+              item.paymentStatus?.charAt(0).toUpperCase() +
+              (item.paymentStatus?.slice(1) || '');
 
             return (
               <div key={item.id} style={styles.card}>
-                <p style={styles.label}><strong>🚗 Driver:</strong> {item.driver}</p>
-                <p style={styles.label}><strong>🙋 Rider:</strong> {item.rider}</p>
-                <p style={styles.label}><strong>📍 Pickup:</strong> {item.pickup}</p>
-                <p style={styles.label}><strong>📍 Drop-off:</strong> {item.dropoff}</p>
-                <p style={styles.label}><strong>📅 Date:</strong> {item.date}</p>
-                <p style={styles.label}><strong>💵 Amount:</strong> AED {item.amount.toFixed(2)}</p>
+                <p style={styles.label}>
+                  <strong>🚗 Driver:</strong> {item.driver}
+                </p>
+                <p style={styles.label}>
+                  <strong>🙋 Rider:</strong> {item.rider}
+                </p>
+                <p style={styles.label}>
+                  <strong>📍 Pickup:</strong> {item.pickup}
+                </p>
+                <p style={styles.label}>
+                  <strong>📍 Drop-off:</strong> {item.dropoff}
+                </p>
+                <p style={styles.label}>
+                  <strong>📅 Date:</strong> {item.date}
+                </p>
+
+                <div style={styles.badgeRow}>
+                  <span style={styles.statusBadge}>
+                    Status: {statusLabel || '—'}
+                  </span>
+                  <span style={styles.paymentBadge}>
+                    Payment: {payLabel || '—'}
+                  </span>
+                </div>
+
+                <p style={styles.label}>
+                  <strong>💵 Amount:</strong> AED {item.amount.toFixed(2)}
+                </p>
+                <p style={styles.label}>
+                  <strong>🏦 HILBU 20% Commission:</strong> AED{' '}
+                  {item.commission.toFixed(2)}
+                </p>
                 <p style={styles.labelGreen}>
                   <strong>✅ Earnings After 20%:</strong>
-                  <span style={styles.valueGreen}> AED {earnings.toFixed(2)}</span>
+                  <span style={styles.valueGreen}>
+                    {' '}
+                    AED {item.earnings.toFixed(2)}
+                  </span>
                 </p>
               </div>
             );
@@ -133,6 +277,36 @@ const styles: { [key: string]: React.CSSProperties } = {
     color: '#000',
     marginBottom: 24,
     textAlign: 'center',
+  },
+  filtersRow: {
+    display: 'flex',
+    gap: 16,
+    flexWrap: 'wrap',
+    marginBottom: 20,
+    alignItems: 'flex-end',
+  },
+  filterBlock: {
+    display: 'flex',
+    flexDirection: 'column',
+    minWidth: 160,
+  },
+  filterLabel: {
+    fontSize: 13,
+    color: '#333',
+    marginBottom: 4,
+    fontWeight: 600,
+  },
+  filterSelect: {
+    padding: '6px 10px',
+    borderRadius: 8,
+    border: '1px solid #ccc',
+    fontSize: 13,
+  },
+  filterInput: {
+    padding: '6px 10px',
+    borderRadius: 8,
+    border: '1px solid #ccc',
+    fontSize: 13,
   },
   list: {
     display: 'flex',
@@ -161,6 +335,29 @@ const styles: { [key: string]: React.CSSProperties } = {
     color: '#006400',
     fontWeight: 'normal',
     marginLeft: 6,
+  },
+  badgeRow: {
+    display: 'flex',
+    gap: 10,
+    margin: '8px 0 10px',
+    flexWrap: 'wrap',
+  },
+  statusBadge: {
+    padding: '4px 10px',
+    borderRadius: 999,
+    backgroundColor: '#000',
+    color: '#FFDC00',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  paymentBadge: {
+    padding: '4px 10px',
+    borderRadius: 999,
+    backgroundColor: '#fff',
+    color: '#000',
+    border: '1px solid #000',
+    fontSize: 12,
+    fontWeight: 'bold',
   },
   loadingContainer: {
     display: 'flex',

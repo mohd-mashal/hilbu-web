@@ -1,3 +1,4 @@
+// FILE: src/screens/drivers.tsx  (or AdminDrivers.tsx – replace entire file)
 import React, { useEffect, useState } from 'react';
 import { collection, onSnapshot, updateDoc, doc, query, where, getDocs } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -75,8 +76,8 @@ function describePlace(p: PlaceField): string {
     // Try common shapes
     if ((p as any).name) return String((p as any).name);
     if ((p as any).formatted_address) return String((p as any).formatted_address);
-    const lat = p.coords?.latitude ?? p.lat ?? p.latitude;
-    const lng = p.coords?.longitude ?? p.lng ?? p.longitude;
+    const lat = p.coords?.latitude ?? (p as any).lat ?? (p as any).latitude;
+    const lng = p.coords?.longitude ?? (p as any).lng ?? (p as any).longitude;
     if (typeof lat === 'number' && typeof lng === 'number') return `(${lat.toFixed(5)}, ${lng.toFixed(5)})`;
     // Fallback: JSON preview (short)
     try {
@@ -251,7 +252,11 @@ export default function AdminDrivers() {
     try {
       for (const driver of pendingDrivers) {
         const driverRef = doc(firestore, 'drivers', driver.id);
-        await updateDoc(driverRef, { status: 'approved', verified: true });
+        await updateDoc(driverRef, {
+          status: 'approved',
+          verified: true,
+          recovery: true, // ✅ default: can receive jobs
+        });
         if (driver.expoPushToken) {
           await sendPushNotification(
             driver.expoPushToken,
@@ -270,7 +275,11 @@ export default function AdminDrivers() {
   const handleApprove = async (driverId: string) => {
     try {
       const driverRef = doc(firestore, 'drivers', driverId);
-      await updateDoc(driverRef, { status: 'approved', verified: true });
+      await updateDoc(driverRef, {
+        status: 'approved',
+        verified: true,
+        recovery: true, // ✅ default: can receive jobs
+      });
       const driver = drivers.find((d) => d.id === driverId);
       if (driver?.expoPushToken) {
         await sendPushNotification(
@@ -454,7 +463,8 @@ export default function AdminDrivers() {
         <div style={styles.list}>
           {filteredDrivers.map((driver) => {
             const isActive = driver.status === 'active';
-            const hasRecovery = !!driver.recovery;
+            // ✅ Default: if recovery is undefined, treat as enabled
+            const hasRecovery = driver.recovery !== false;
             const statusBtnLabel = isActive ? 'Set Inactive' : 'Set Active';
             const recoveryBtnLabel = hasRecovery ? 'Disable Recovery Jobs' : 'Enable Recovery Jobs';
 
@@ -468,6 +478,10 @@ export default function AdminDrivers() {
                 </p>
                 <p style={styles.label}>
                   ⚙️ Status: <span style={styles.value}>{driver.status || 'inactive'}</span>
+                </p>
+                <p style={styles.label}>
+                  🛠 Recovery Jobs:{' '}
+                  <span style={styles.value}>{hasRecovery ? 'Enabled' : 'Disabled'}</span>
                 </p>
 
                 {typeof driver.averageRating === 'number' && (
@@ -545,14 +559,16 @@ export default function AdminDrivers() {
               <p>
                 <strong>⭐ Average Rating:</strong> {Number(selectedDriver.averageRating).toFixed(1)}
                 <span style={{ color: '#666', marginLeft: 8 }}>
-                  ({selectedDriver.ratingCount || 0} {selectedDriver.ratingCount === 1 ? 'rating' : 'ratings'})
+                  ({selectedDriver.ratingCount || 0}{' '}
+                  {selectedDriver.ratingCount === 1 ? 'rating' : 'ratings'})
                 </span>
               </p>
             )}
 
+            {/* Old storage-based URLs (still supported) */}
             <div style={{ marginTop: 12 }}>
               <p>
-                <strong>📄 License:</strong>{' '}
+                <strong>📄 License (URL):</strong>{' '}
                 {selectedDriver.licenseUrl ? (
                   <a href={selectedDriver.licenseUrl} target="_blank" rel="noopener noreferrer">
                     View
@@ -566,7 +582,7 @@ export default function AdminDrivers() {
 
             <div style={{ marginTop: 12 }}>
               <p>
-                <strong>🆔 Emirates ID:</strong>{' '}
+                <strong>🆔 Emirates ID (URL):</strong>{' '}
                 {selectedDriver.emiratesIdUrl ? (
                   <a href={selectedDriver.emiratesIdUrl} target="_blank" rel="noopener noreferrer">
                     View
@@ -577,6 +593,77 @@ export default function AdminDrivers() {
               </p>
               <input type="file" onChange={(e) => handleFileUpload(e, 'emiratesIdUrl')} disabled={uploading} />
             </div>
+
+            {/* Show Firestore base64 docs */}
+            {(selectedDriver.licenseDocs || selectedDriver.idCardDocs) && (
+              <div style={{ marginTop: 20 }}>
+                <h3>Uploaded Documents</h3>
+
+                {selectedDriver.licenseDocs && (
+                  <div style={{ marginTop: 10 }}>
+                    <p>
+                      <strong>📄 License Docs:</strong>
+                    </p>
+                    <div style={{ display: 'flex', gap: 10 }}>
+                      {selectedDriver.licenseDocs.front && (
+                        <div style={styles.thumbWrap}>
+                          <img
+                            src={selectedDriver.licenseDocs.front}
+                            alt="License Front"
+                            style={styles.thumb}
+                            onClick={() => setSelectedImage(selectedDriver.licenseDocs?.front || null)}
+                          />
+                          <span style={{ fontSize: 12 }}>Front</span>
+                        </div>
+                      )}
+                      {selectedDriver.licenseDocs.back && (
+                        <div style={styles.thumbWrap}>
+                          <img
+                            src={selectedDriver.licenseDocs.back}
+                            alt="License Back"
+                            style={styles.thumb}
+                            onClick={() => setSelectedImage(selectedDriver.licenseDocs?.back || null)}
+                          />
+                          <span style={{ fontSize: 12 }}>Back</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {selectedDriver.idCardDocs && (
+                  <div style={{ marginTop: 10 }}>
+                    <p>
+                      <strong>🆔 Emirates ID:</strong>
+                    </p>
+                    <div style={{ display: 'flex', gap: 10 }}>
+                      {selectedDriver.idCardDocs.front && (
+                        <div style={styles.thumbWrap}>
+                          <img
+                            src={selectedDriver.idCardDocs.front}
+                            alt="ID Front"
+                            style={styles.thumb}
+                            onClick={() => setSelectedImage(selectedDriver.idCardDocs?.front || null)}
+                          />
+                          <span style={{ fontSize: 12 }}>Front</span>
+                        </div>
+                      )}
+                      {selectedDriver.idCardDocs.back && (
+                        <div style={styles.thumbWrap}>
+                          <img
+                            src={selectedDriver.idCardDocs.back}
+                            alt="ID Back"
+                            style={styles.thumb}
+                            onClick={() => setSelectedImage(selectedDriver.idCardDocs?.back || null)}
+                          />
+                          <span style={{ fontSize: 12 }}>Back</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             <h3 style={{ marginTop: 20 }}>Recent Trips:</h3>
             {loadingTrips ? (

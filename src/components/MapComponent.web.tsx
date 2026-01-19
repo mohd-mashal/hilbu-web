@@ -1,5 +1,11 @@
 // FILE: src/components/MapComponent.web.tsx
-import { useCallback, useMemo, useRef, useState, useEffect } from 'react';
+import React, {
+  useCallback,
+  useMemo,
+  useRef,
+  useState,
+  useEffect,
+} from 'react';
 import {
   GoogleMap,
   Marker,
@@ -26,6 +32,7 @@ const containerStyle: React.CSSProperties = {
   borderRadius: '12px',
   border: '1px solid #FFDC00', // HILBU theme
   overflow: 'hidden',
+  position: 'relative',        // for legend overlay
 };
 
 const defaultCenter = { lat: 25.2048, lng: 55.2708 };
@@ -33,11 +40,15 @@ const defaultCenter = { lat: 25.2048, lng: 55.2708 };
 // Read the browser (web) key from env (Vite / Next / Vercel)
 function readGoogleKey(): string {
   const vite =
-    (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY) ||
-    (typeof import.meta !== 'undefined' && (import.meta as any).env?.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY);
+    (typeof import.meta !== 'undefined' &&
+      (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY) ||
+    (typeof import.meta !== 'undefined' &&
+      (import.meta as any).env?.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY);
   const node =
-    (typeof process !== 'undefined' && (process as any).env?.VITE_GOOGLE_MAPS_API_KEY) ||
-    (typeof process !== 'undefined' && (process as any).env?.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY);
+    (typeof process !== 'undefined' &&
+      (process as any).env?.VITE_GOOGLE_MAPS_API_KEY) ||
+    (typeof process !== 'undefined' &&
+      (process as any).env?.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY);
   return vite || node || '';
 }
 
@@ -64,8 +75,7 @@ function buildIcon(url: string): Promise<google.maps.Icon> {
   });
 }
 
-// IMPORTANT: keep only libraries your package version supports.
-// This avoids the “Type … not assignable to type 'Library'” error.
+// Only libraries your package version supports
 const LIBRARIES: ('places')[] = ['places'];
 
 export default function MapComponent({
@@ -75,10 +85,15 @@ export default function MapComponent({
   showDrivers = true,
 }: MapComponentProps) {
   const mapRef = useRef<google.maps.Map | null>(null);
-  const [directions, setDirections] = useState<google.maps.DirectionsResult | null>(null);
+  const [directions, setDirections] =
+    useState<google.maps.DirectionsResult | null>(null);
   const [driverLocations, setDriverLocations] = useState<Coordinates[]>([]);
-  const [userCarIcon, setUserCarIcon] = useState<google.maps.Icon | undefined>(undefined);
-  const [towTruckIcon, setTowTruckIcon] = useState<google.maps.Icon | undefined>(undefined);
+  const [userCarIcon, setUserCarIcon] = useState<google.maps.Icon | undefined>(
+    undefined
+  );
+  const [towTruckIcon, setTowTruckIcon] = useState<
+    google.maps.Icon | undefined
+  >(undefined);
 
   const apiKey = readGoogleKey();
 
@@ -88,13 +103,13 @@ export default function MapComponent({
     libraries: LIBRARIES,
   });
 
-  // DEBUG: show which key & host your live build is using (safe tail only)
+  // DEBUG (optional)
   useEffect(() => {
     if (apiKey) console.log('Maps key (tail): …' + apiKey.slice(-8));
     console.log('Host:', window.location.origin);
   }, [apiKey]);
 
-  // Prepare marker icons (from /public)
+  // Prepare marker icons
   useEffect(() => {
     if (!isLoaded || !window.google) return;
     let mounted = true;
@@ -128,7 +143,10 @@ export default function MapComponent({
   // Live drivers (optional)
   useEffect(() => {
     if (!showDrivers) return;
-    const driverQuery = query(collection(firestore, 'drivers'), where('isOnline', '==', true));
+    const driverQuery = query(
+      collection(firestore, 'drivers'),
+      where('isOnline', '==', true)
+    );
     const unsubscribe = onSnapshot(driverQuery, (snapshot) => {
       const drivers: Coordinates[] = [];
       snapshot.forEach((doc) => {
@@ -145,14 +163,17 @@ export default function MapComponent({
     return () => unsubscribe();
   }, [showDrivers]);
 
-  // Compute route on client (Maps JS)
+  // Route between location & destination
   useEffect(() => {
     if (!location || !destination || !isLoaded) return;
     const svc = new google.maps.DirectionsService();
     svc.route(
       {
         origin: { lat: location.latitude, lng: location.longitude },
-        destination: { lat: destination.latitude, lng: destination.longitude },
+        destination: {
+          lat: destination.latitude,
+          lng: destination.longitude,
+        },
         travelMode: google.maps.TravelMode.DRIVING,
       },
       (result, status) => {
@@ -169,10 +190,18 @@ export default function MapComponent({
   useEffect(() => {
     if (!mapRef.current || !window.google || !isLoaded) return;
     const bounds = new window.google.maps.LatLngBounds();
-    if (location) bounds.extend({ lat: location.latitude, lng: location.longitude });
-    if (destination) bounds.extend({ lat: destination.latitude, lng: destination.longitude });
-    if (towTruck) bounds.extend({ lat: towTruck.latitude, lng: towTruck.longitude });
-    driverLocations.forEach((d) => bounds.extend({ lat: d.latitude, lng: d.longitude }));
+    if (location)
+      bounds.extend({ lat: location.latitude, lng: location.longitude });
+    if (destination)
+      bounds.extend({
+        lat: destination.latitude,
+        lng: destination.longitude,
+      });
+    if (towTruck)
+      bounds.extend({ lat: towTruck.latitude, lng: towTruck.longitude });
+    driverLocations.forEach((d) =>
+      bounds.extend({ lat: d.latitude, lng: d.longitude })
+    );
     if (!bounds.isEmpty()) {
       mapRef.current.fitBounds(bounds, 60);
     } else {
@@ -181,13 +210,25 @@ export default function MapComponent({
     }
   }, [isLoaded, location, destination, towTruck, driverLocations]);
 
-  // ——— Error & loading states ———
+  // Error & loading states
   if (!apiKey) {
     return (
-      <div style={{ ...containerStyle, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+      <div
+        style={{
+          ...containerStyle,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: 16,
+        }}
+      >
         <div>
-          <div style={{ fontWeight: 700, color: '#000' }}>Missing Google Maps key.</div>
-          <div style={{ color: '#000' }}>Set <code>VITE_GOOGLE_MAPS_API_KEY</code> on your host and redeploy.</div>
+          <div style={{ fontWeight: 700, color: '#000' }}>
+            Missing Google Maps key.
+          </div>
+          <div style={{ color: '#000' }}>
+            Set <code>VITE_GOOGLE_MAPS_API_KEY</code> on your host and redeploy.
+          </div>
         </div>
       </div>
     );
@@ -195,11 +236,23 @@ export default function MapComponent({
 
   if (loadError) {
     return (
-      <div style={{ ...containerStyle, display:'flex',alignItems:'center',justifyContent:'center',padding:16 }}>
+      <div
+        style={{
+          ...containerStyle,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: 16,
+        }}
+      >
         <div>
-          <div style={{ fontWeight: 700, color:'#000' }}>Google Maps failed to load.</div>
-          <div style={{ color:'#000' }}>Check Web key referrers and API restrictions.</div>
-          <div style={{ color:'#000', marginTop: 8, fontSize: 12 }}>
+          <div style={{ fontWeight: 700, color: '#000' }}>
+            Google Maps failed to load.
+          </div>
+          <div style={{ color: '#000' }}>
+            Check Web key referrers and API restrictions.
+          </div>
+          <div style={{ color: '#000', marginTop: 8, fontSize: 12 }}>
             Error: {(loadError as any)?.message || String(loadError)}
           </div>
         </div>
@@ -212,38 +265,75 @@ export default function MapComponent({
   }
 
   return (
-    <GoogleMap
-      mapContainerStyle={containerStyle}
-      center={center}
-      zoom={14}
-      onLoad={onLoad}
-      onUnmount={onUnmount}
-      options={{
-        gestureHandling: 'greedy',
-        mapTypeControl: false,
-        streetViewControl: false,
-        fullscreenControl: false,
-        zoomControl: true,
-      }}
-    >
-      {location && (
-        <Marker position={{ lat: location.latitude, lng: location.longitude }} icon={userCarIcon} />
-      )}
-      {destination && (
-        <Marker position={{ lat: destination.latitude, lng: destination.longitude }} label="Drop-off" />
-      )}
-      {towTruck && (
-        <Marker position={{ lat: towTruck.latitude, lng: towTruck.longitude }} icon={towTruckIcon} />
-      )}
-      {showDrivers &&
-        driverLocations.map((driver, index) => (
+    <div style={containerStyle}>
+      <GoogleMap
+        mapContainerStyle={{ width: '100%', height: '100%' }}
+        center={center}
+        zoom={14}
+        onLoad={onLoad}
+        onUnmount={onUnmount}
+        options={{
+          gestureHandling: 'greedy',
+          mapTypeControl: false,
+          streetViewControl: false,
+          fullscreenControl: false,
+          zoomControl: true,
+        }}
+      >
+        {location && (
           <Marker
-            key={`driver-${index}`}
-            position={{ lat: driver.latitude, lng: driver.longitude }}
+            position={{ lat: location.latitude, lng: location.longitude }}
+            icon={userCarIcon}
+          />
+        )}
+        {destination && (
+          <Marker
+            position={{
+              lat: destination.latitude,
+              lng: destination.longitude,
+            }}
+            label="Drop-off"
+          />
+        )}
+        {towTruck && (
+          <Marker
+            position={{ lat: towTruck.latitude, lng: towTruck.longitude }}
             icon={towTruckIcon}
           />
-        ))}
-      {directions && <DirectionsRenderer directions={directions} />}
-    </GoogleMap>
+        )}
+        {showDrivers &&
+          driverLocations.map((driver, index) => (
+            <Marker
+              key={`driver-${index}`}
+              position={{ lat: driver.latitude, lng: driver.longitude }}
+              icon={towTruckIcon}
+            />
+          ))}
+        {directions && <DirectionsRenderer directions={directions} />}
+      </GoogleMap>
+
+      {/* Legend overlay */}
+      <div
+        style={{
+          position: 'absolute',
+          left: 12,
+          bottom: 12,
+          backgroundColor: 'rgba(255,255,255,0.95)',
+          borderRadius: 12,
+          padding: '8px 12px',
+          boxShadow: '0 2px 6px rgba(0,0,0,0.12)',
+          fontSize: 12,
+          color: '#000',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 4,
+        }}
+      >
+        <div style={{ fontWeight: 700, marginBottom: 2 }}>Legend</div>
+        <div>🚗 User / Pickup</div>
+        <div>🚚 Online Drivers / Tow Trucks</div>
+        <div>📍 Drop-off (label “Drop-off”)</div>
+      </div>
+    </div>
   );
 }

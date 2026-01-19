@@ -25,7 +25,7 @@ export default function SupportMessages() {
 
   const db = getFirebaseDB();
 
-  // Users list (unchanged logic)
+  // Users list
   useEffect(() => {
     const qy = query(collection(db, 'support_messages'), orderBy('timestamp', 'desc'));
     const unsubscribe = onSnapshot(qy, async (snapshot) => {
@@ -70,7 +70,7 @@ export default function SupportMessages() {
     return () => unsubscribe();
   }, [db, selectedPhone]);
 
-  // Messages for selected chat (unchanged logic)
+  // Messages for selected chat
   useEffect(() => {
     if (!selectedPhone) return;
 
@@ -92,7 +92,7 @@ export default function SupportMessages() {
     return () => unsubscribe();
   }, [db, selectedPhone]);
 
-  // Send reply (unchanged logic)
+  // Send reply
   const sendReply = async () => {
     if (!reply.trim() || !selectedPhone) return;
 
@@ -212,6 +212,14 @@ export default function SupportMessages() {
             onChange={(e) => setReply(e.target.value)}
             placeholder="Type a reply…"
             style={styles.replyInput}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                if (reply.trim()) {
+                  sendReply();
+                }
+              }
+            }}
           />
           <button
             onClick={sendReply}
