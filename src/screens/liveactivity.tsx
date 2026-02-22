@@ -42,8 +42,12 @@ const prettyStatus = (s?: string) => {
     case 'cancelled':
     case 'canceled':
       return 'Cancelled';
+    case 'rejected':
+      return 'Rejected';
     default:
-      return v || 'Unknown';
+      return v
+        ? v.charAt(0).toUpperCase() + v.slice(1)
+        : 'Unknown';
   }
 };
 

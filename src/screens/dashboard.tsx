@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { collection, getDocs, query, orderBy, limit } from 'firebase/firestore';
+import { collection, getDocs, query, orderBy, limit, where } from 'firebase/firestore';
 import { firestore } from '../firebaseConfig';
 
 type ScreenKey =
@@ -33,8 +33,10 @@ const prettyStatus = (s?: string) => {
     case 'cancelled':
     case 'canceled':
       return 'Cancelled';
+    case 'rejected':
+      return 'Rejected'; // ✅ ADD THIS LINE
     default:
-      return v || 'Unknown';
+      return v ? v.charAt(0).toUpperCase() + v.slice(1) : 'Unknown';
   }
 };
 
@@ -84,22 +86,27 @@ export default function Dashboard({ setActiveTab }: { setActiveTab: (tab: Screen
   }, []);
 
   const fetchStats = async () => {
-    try {
-      const usersSnap = await getDocs(collection(firestore, 'users'));
-      setTotalUsers(usersSnap.size);
+  try {
+    const usersSnap = await getDocs(collection(firestore, 'users'));
+    setTotalUsers(usersSnap.size);
 
-      const driversSnap = await getDocs(collection(firestore, 'drivers'));
-      setTotalDrivers(driversSnap.size);
+    // ✅ Pending drivers only
+    const pendingDriversQuery = query(
+      collection(firestore, 'drivers'),
+      where('status', '==', 'pending_approval')
+    );
+    const pendingDriversSnap = await getDocs(pendingDriversQuery);
+    setTotalDrivers(pendingDriversSnap.size);
 
-      const tripsSnap = await getDocs(collection(firestore, 'trip_history_user'));
-      setTotalTrips(tripsSnap.size);
+    const tripsSnap = await getDocs(collection(firestore, 'trip_history_user'));
+    setTotalTrips(tripsSnap.size);
 
-      const payoutsSnap = await getDocs(collection(firestore, 'payout_requests'));
-      setTotalPayouts(payoutsSnap.size);
-    } catch (error) {
-      console.error('Error fetching stats:', error);
-    }
-  };
+    const payoutsSnap = await getDocs(collection(firestore, 'payout_requests'));
+    setTotalPayouts(payoutsSnap.size);
+  } catch (error) {
+    console.error('Error fetching stats:', error);
+  }
+};
 
   const fetchRecentJobs = async () => {
     try {
@@ -173,25 +180,25 @@ export default function Dashboard({ setActiveTab }: { setActiveTab: (tab: Screen
             <Card
               label="👤 Total Users"
               value={totalUsers}
-              sub="active this month"
+              sub="Active this month"
               onPress={() => setActiveTab('users')}
             />
             <Card
-              label="🚗 Total Drivers"
+              label="🚗 Pending Drivers"
               value={totalDrivers}
-              sub="registered"
+              sub="Registered"
               onPress={() => setActiveTab('drivers')}
             />
             <Card
               label="🛣️ Total Trips"
               value={totalTrips}
-              sub="completed"
+              sub="Completed"
               onPress={() => setActiveTab('trips')}
             />
             <Card
               label="💰 Payout Requests"
               value={totalPayouts}
-              sub="pending"
+              sub="Pending"
               onPress={() => setActiveTab('payouts')}
             />
           </div>
@@ -222,9 +229,7 @@ export default function Dashboard({ setActiveTab }: { setActiveTab: (tab: Screen
                   </span>
                 </div>
                 <div style={styles.jobMetaRow}>
-                  {job.userPhone && (
-                    <span style={styles.jobMetaItem}>User: {job.userPhone}</span>
-                  )}
+                  {job.userPhone && <span style={styles.jobMetaItem}>User: {job.userPhone}</span>}
                   {job.driverPhone && (
                     <span style={styles.jobMetaItem}>Driver: {job.driverPhone}</span>
                   )}
@@ -258,13 +263,11 @@ function Card({
       }}
       onMouseEnter={(e) => {
         (e.currentTarget as HTMLDivElement).style.transform = 'scale(1.03)';
-        (e.currentTarget as HTMLDivElement).style.boxShadow =
-          '0 6px 14px rgba(0,0,0,0.15)';
+        (e.currentTarget as HTMLDivElement).style.boxShadow = '0 6px 14px rgba(0,0,0,0.15)';
       }}
       onMouseLeave={(e) => {
         (e.currentTarget as HTMLDivElement).style.transform = 'scale(1)';
-        (e.currentTarget as HTMLDivElement).style.boxShadow =
-          '0 4px 6px rgba(0,0,0,0.1)';
+        (e.currentTarget as HTMLDivElement).style.boxShadow = '0 4px 6px rgba(0,0,0,0.1)';
       }}
     >
       <p style={styles.cardLabel}>{label}</p>

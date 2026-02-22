@@ -16,6 +16,32 @@ interface TripData {
   earnings: number;
 }
 
+const normalizeStatus = (v: any) => {
+  const s = String(v ?? '').trim().toLowerCase();
+
+  // common aliases
+  if (s === 'assigned') return 'accepted';
+  if (s === 'on the way') return 'on_the_way';
+  if (s === 'ontheway') return 'on_the_way';
+  if (s === 'arrive') return 'arrived';
+  if (s === 'canceled') return 'cancelled'; // unify spelling
+  if (s === 'cancel') return 'cancelled';
+
+  return s || 'completed';
+};
+
+const normalizePayment = (v: any) => {
+  const s = String(v ?? '').trim().toLowerCase();
+
+  // treat these as "paid"
+  if (['paid', 'success', 'succeeded', 'completed', 'captured', 'done'].includes(s)) return 'paid';
+
+  // treat empty as unknown
+  if (!s) return 'unknown';
+
+  return s;
+};
+
 export default function AdminTrips() {
   const [trips, setTrips] = useState<TripData[]>([]);
   const [loading, setLoading] = useState(true);
@@ -27,7 +53,7 @@ export default function AdminTrips() {
 
   useEffect(() => {
     const fetchTrips = async () => {
-      const db = getFirebaseDB(); // ✅ same DB getter as other admin pages
+      const db = getFirebaseDB();
       try {
         const tripsSnap = await getDocs(collection(db, 'trip_history_driver'));
 
@@ -38,13 +64,12 @@ export default function AdminTrips() {
           let dt: Date;
           if (data?.timestamp?.toDate) {
             dt = data.timestamp.toDate();
-          } else if (
-            typeof data?.timestamp === 'string' ||
-            typeof data?.timestamp === 'number'
-          ) {
+          } else if (typeof data?.timestamp === 'string' || typeof data?.timestamp === 'number') {
             dt = new Date(data.timestamp);
           } else if (data?.createdAt?.toDate) {
             dt = data.createdAt.toDate();
+          } else if (typeof data?.createdAt === 'string' || typeof data?.createdAt === 'number') {
+            dt = new Date(data.createdAt);
           } else {
             dt = new Date();
           }
@@ -57,32 +82,21 @@ export default function AdminTrips() {
 
           // pickup / dropoff: string or { address, coords }
           const pickupStr =
-            typeof data?.pickup === 'string'
-              ? data.pickup
-              : data?.pickup?.address || 'N/A';
+            typeof data?.pickup === 'string' ? data.pickup : data?.pickup?.address || 'N/A';
 
           const dropoffStr =
-            typeof data?.dropoff === 'string'
-              ? data.dropoff
-              : data?.dropoff?.address || 'N/A';
+            typeof data?.dropoff === 'string' ? data.dropoff : data?.dropoff?.address || 'N/A';
 
-          // status & paymentStatus
-          const rawStatus: string = (data?.status as string) || 'completed';
-          const status = rawStatus.toLowerCase();
+          const status = normalizeStatus(data?.status);
 
-          const paymentStatus: string =
-            (data?.paymentStatus as string) || 'unknown';
+          const paymentStatus = normalizePayment(data?.paymentStatus);
 
           // commission & earnings (prefer DB, else 20% rule)
-          const commissionFromDb =
-            typeof data?.commission === 'number' ? data.commission : null;
-          const earningsFromDb =
-            typeof data?.earnings === 'number' ? data.earnings : null;
+          const commissionFromDb = typeof data?.commission === 'number' ? data.commission : null;
+          const earningsFromDb = typeof data?.earnings === 'number' ? data.earnings : null;
 
-          const commission =
-            commissionFromDb !== null ? commissionFromDb : amountNum * 0.2; // 20%
-          const earnings =
-            earningsFromDb !== null ? earningsFromDb : amountNum - commission;
+          const commission = commissionFromDb !== null ? commissionFromDb : amountNum * 0.2; // 20%
+          const earnings = earningsFromDb !== null ? earningsFromDb : amountNum - commission;
 
           return {
             id: docSnap.id,
@@ -118,29 +132,20 @@ export default function AdminTrips() {
 
   // ✅ Apply filters
   const filteredTrips = trips.filter((t) => {
+    const st = (t.status || '').toLowerCase();
+    const pay = (t.paymentStatus || '').toLowerCase();
+
     // status filter
-    if (statusFilter !== 'all' && (t.status || '') !== statusFilter) {
-      return false;
-    }
+    if (statusFilter !== 'all' && st !== statusFilter) return false;
 
     // payment filter
-    if (paymentFilter === 'paid' && (t.paymentStatus || '').toLowerCase() !== 'paid') {
-      return false;
-    }
-    if (paymentFilter === 'unpaid' && (t.paymentStatus || '').toLowerCase() === 'paid') {
-      return false;
-    }
-    if (paymentFilter === 'unknown' && (t.paymentStatus || '').toLowerCase() !== 'unknown') {
-      return false;
-    }
+    if (paymentFilter === 'paid' && pay !== 'paid') return false;
+    if (paymentFilter === 'unpaid' && pay === 'paid') return false;
+    if (paymentFilter === 'unknown' && pay !== 'unknown') return false;
 
     // driver filter (phone/id contains text)
-    if (
-      driverFilter.trim() &&
-      !t.driver.toLowerCase().includes(driverFilter.trim().toLowerCase())
-    ) {
+    if (driverFilter.trim() && !t.driver.toLowerCase().includes(driverFilter.trim().toLowerCase()))
       return false;
-    }
 
     return true;
   });
@@ -211,8 +216,7 @@ export default function AdminTrips() {
             const statusLabel =
               item.status?.charAt(0).toUpperCase() + (item.status?.slice(1) || '');
             const payLabel =
-              item.paymentStatus?.charAt(0).toUpperCase() +
-              (item.paymentStatus?.slice(1) || '');
+              item.paymentStatus?.charAt(0).toUpperCase() + (item.paymentStatus?.slice(1) || '');
 
             return (
               <div key={item.id} style={styles.card}>
@@ -233,27 +237,19 @@ export default function AdminTrips() {
                 </p>
 
                 <div style={styles.badgeRow}>
-                  <span style={styles.statusBadge}>
-                    Status: {statusLabel || '—'}
-                  </span>
-                  <span style={styles.paymentBadge}>
-                    Payment: {payLabel || '—'}
-                  </span>
+                  <span style={styles.statusBadge}>Status: {statusLabel || '—'}</span>
+                  <span style={styles.paymentBadge}>Payment: {payLabel || '—'}</span>
                 </div>
 
                 <p style={styles.label}>
                   <strong>💵 Amount:</strong> AED {item.amount.toFixed(2)}
                 </p>
                 <p style={styles.label}>
-                  <strong>🏦 HILBU 20% Commission:</strong> AED{' '}
-                  {item.commission.toFixed(2)}
+                  <strong>🏦 HILBU 20% Commission:</strong> AED {item.commission.toFixed(2)}
                 </p>
                 <p style={styles.labelGreen}>
                   <strong>✅ Earnings After 20%:</strong>
-                  <span style={styles.valueGreen}>
-                    {' '}
-                    AED {item.earnings.toFixed(2)}
-                  </span>
+                  <span style={styles.valueGreen}> AED {item.earnings.toFixed(2)}</span>
                 </p>
               </div>
             );

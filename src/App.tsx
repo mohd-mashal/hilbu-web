@@ -19,7 +19,6 @@ import {
   Mail,
   Percent as PercentIcon,
 } from 'lucide-react';
-
 import Dashboard from './screens/dashboard';
 import Users from './screens/users';
 import Drivers from './screens/drivers';
@@ -33,22 +32,15 @@ import PromoCodes from './screens/PromoCodes';
 
 import Privacy from './privacy';
 import Terms from './terms';
+import Contact from './screens/Contact';
 
 // NEW: Public landing page (you created this)
 import PublicHome from './screens/Home';
+import PublicLayout from './components/PublicLayout';
 
 // Store URLs
 const IOS_URL = 'https://apps.apple.com/us/app/hilbu/id6751604180?platform=iphone';
 const ANDROID_URL = 'https://play.google.com/store/apps/details?id=com.hilbu.recovery';
-
-// Load admin credentials from environment
-const adminEmails = (import.meta.env.VITE_ADMIN_EMAILS || '').split(',');
-const adminPasswords = (import.meta.env.VITE_ADMIN_PASSWORDS || '').split(',');
-
-const ADMINS = adminEmails.map((email: string, i: number) => ({
-  email: email.trim(),
-  password: adminPasswords[i]?.trim() || '',
-}));
 
 type ScreenKey =
   | 'dashboard'
@@ -162,13 +154,21 @@ const App = () => {
     }
   }, []);
 
-  const handleLogin = () => {
-    const match = ADMINS.find(
-      (admin: { email: string; password: string }) =>
-        admin.email === email.trim() && admin.password === password
-    );
+  const handleLogin = async () => {
+    try {
+      const res = await fetch('/api/admin-login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim(), password }),
+      });
 
-    if (match) {
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok || !data?.ok) {
+        alert(data?.error || 'Invalid email or password');
+        return;
+      }
+
       localStorage.setItem('admin-auth', 'true');
       localStorage.setItem('admin-email', email.trim());
       if (rememberMe) {
@@ -177,8 +177,8 @@ const App = () => {
         localStorage.removeItem('admin-remember');
       }
       setAuthenticated(true);
-    } else {
-      alert('Invalid email or password');
+    } catch {
+      alert('Login failed. Please try again.');
     }
   };
 
@@ -323,17 +323,20 @@ const App = () => {
   return (
     <BrowserRouter>
       <Routes>
-        {/* Public pages */}
-        <Route path="/" element={<PublicHome />} />
-        <Route path="/privacy" element={<Privacy />} />
-        <Route path="/terms" element={<Terms />} />
+     {/* Public pages (WRAPPED by PublicLayout) */}
+    <Route element={<PublicLayout />}>
+    <Route path="/" element={<PublicHome />} />
+    <Route path="/privacy" element={<Privacy />} />
+    <Route path="/terms" element={<Terms />} />
+    <Route path="/contact" element={<Contact />} />
+    </Route>
 
-        {/* Admin entry */}
-        <Route path="/admin" element={authenticated ? AdminLayout : LoginScreen} />
+    {/* Admin entry */}
+    <Route path="/admin" element={authenticated ? AdminLayout : LoginScreen} />
 
-        {/* Fallback: anything unknown goes to the public homepage */}
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
+    {/* Fallback */}
+    <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
     </BrowserRouter>
   );
 };

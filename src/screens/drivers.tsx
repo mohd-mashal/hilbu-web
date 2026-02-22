@@ -45,41 +45,20 @@ interface Trip {
   timestamp?: any;
 }
 
-interface ImageModalProps {
-  imageUrl: string;
-  onClose: () => void;
-}
+/* ---------------------------------
+   Helpers
+---------------------------------- */
 
-const ImageModal: React.FC<ImageModalProps> = ({ imageUrl, onClose }) => {
-  return (
-    <div style={styles.imageModalOverlay} onClick={onClose}>
-      <div style={styles.imageModalBox} onClick={(e) => e.stopPropagation()}>
-        <img
-          src={imageUrl}
-          alt="Enlarged document"
-          style={{ maxWidth: '100%', maxHeight: '70vh', objectFit: 'contain' }}
-        />
-        <a href={imageUrl} download style={styles.downloadBtn}>
-          Download Image
-        </a>
-      </div>
-    </div>
-  );
-};
-
-// Safely turn pickup/dropoff (string OR object) into a readable string
 function describePlace(p: PlaceField): string {
   if (p == null) return 'Unknown';
   if (typeof p === 'string') return p;
   if (typeof p === 'object') {
     if (p.address && typeof p.address === 'string') return p.address;
-    // Try common shapes
     if ((p as any).name) return String((p as any).name);
     if ((p as any).formatted_address) return String((p as any).formatted_address);
     const lat = p.coords?.latitude ?? (p as any).lat ?? (p as any).latitude;
     const lng = p.coords?.longitude ?? (p as any).lng ?? (p as any).longitude;
     if (typeof lat === 'number' && typeof lng === 'number') return `(${lat.toFixed(5)}, ${lng.toFixed(5)})`;
-    // Fallback: JSON preview (short)
     try {
       const s = JSON.stringify(p);
       return s.length > 60 ? s.slice(0, 57) + '…' : s;
@@ -90,31 +69,223 @@ function describePlace(p: PlaceField): string {
   return String(p);
 }
 
+function getMimeFromDataUrl(u: string): string | null {
+  if (!u?.startsWith('data:')) return null;
+  const after = u.slice(5);
+  const semi = after.indexOf(';');
+  if (semi === -1) return null;
+  return after.slice(0, semi) || null;
+}
+
+function looksLikePdf(u: string): boolean {
+  if (!u) return false;
+  const mime = getMimeFromDataUrl(u);
+  if (mime) return mime.toLowerCase().includes('application/pdf');
+  const lower = u.toLowerCase();
+  return lower.includes('.pdf') || lower.includes('application/pdf');
+}
+
+function looksLikeImage(u: string): boolean {
+  if (!u) return false;
+  const mime = getMimeFromDataUrl(u);
+  if (mime) return mime.toLowerCase().startsWith('image/');
+  const lower = u.toLowerCase();
+  return (
+    lower.endsWith('.jpg') ||
+    lower.endsWith('.jpeg') ||
+    lower.endsWith('.png') ||
+    lower.endsWith('.webp') ||
+    lower.endsWith('.gif')
+  );
+}
+
+// ✅ Fix for "Open in new tab" blank page on base64/data URLs
+function isDataUrl(u: string): boolean {
+  return typeof u === 'string' && u.startsWith('data:');
+}
+
+function dataUrlToBlob(u: string): Blob | null {
+  try {
+    // data:<mime>;base64,<data>
+    const mime = getMimeFromDataUrl(u) || 'application/octet-stream';
+    const comma = u.indexOf(',');
+    if (comma === -1) return null;
+    const base64 = u.slice(comma + 1);
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return new Blob([bytes], { type: mime });
+  } catch {
+    return null;
+  }
+}
+
+function openInNewTabSafe(url: string) {
+  if (!url) return;
+
+  // If it's base64/data URL → convert to Blob URL then open
+  if (isDataUrl(url)) {
+    const blob = dataUrlToBlob(url);
+    if (!blob) return;
+    const blobUrl = URL.createObjectURL(blob);
+    window.open(blobUrl, '_blank', 'noopener,noreferrer');
+    // optional cleanup
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
+    return;
+  }
+
+  // normal https url
+  window.open(url, '_blank', 'noopener,noreferrer');
+}
+
+function downloadSafe(url: string, filename: string) {
+  if (!url) return;
+
+  // If it's data URL → Blob URL then download
+  if (isDataUrl(url)) {
+    const blob = dataUrlToBlob(url);
+    if (!blob) return;
+    const blobUrl = URL.createObjectURL(blob);
+
+    const a = document.createElement('a');
+    a.href = blobUrl;
+    a.download = filename || 'file';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
+    return;
+  }
+
+  // normal https url download
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename || 'file';
+  a.target = '_blank';
+  a.rel = 'noopener noreferrer';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
+type DocViewerItem = { url: string; label?: string; filename?: string };
+
+interface DocViewerModalProps {
+  item: DocViewerItem;
+  onClose: () => void;
+}
+
+const DocViewerModal: React.FC<DocViewerModalProps> = ({ item, onClose }) => {
+  const isPdf = looksLikePdf(item.url);
+  const isImg = looksLikeImage(item.url);
+
+  const filename =
+    item.filename ||
+    (isPdf ? 'document.pdf' : isImg ? 'image.jpg' : 'file');
+
+  return (
+    <div style={styles.viewerOverlay} onClick={onClose}>
+      <div style={styles.viewerBox} onClick={(e) => e.stopPropagation()}>
+        <div style={styles.viewerHeader}>
+          <div style={{ fontWeight: 800, color: '#000' }}>
+            {item.label || (isPdf ? 'PDF Document' : isImg ? 'Image' : 'Document')}
+          </div>
+          <button style={styles.viewerCloseBtn} onClick={onClose}>
+            ✕
+          </button>
+        </div>
+
+        <div style={styles.viewerContent}>
+          {isPdf ? (
+            <iframe title="PDF Preview" src={item.url} style={styles.pdfFrame} />
+          ) : isImg ? (
+            <img src={item.url} alt="Document" style={styles.viewerImage} />
+          ) : (
+            <div style={styles.unknownDocBox}>
+              <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 6 }}>Preview not available</div>
+              <div style={{ color: '#444', fontSize: 13 }}>You can still download / open it.</div>
+            </div>
+          )}
+        </div>
+
+        <div style={styles.viewerActions}>
+          <button
+            type="button"
+            style={styles.viewerActionBtn}
+            onClick={() => openInNewTabSafe(item.url)}
+          >
+            Open in new tab
+          </button>
+
+          <button
+            type="button"
+            style={{ ...styles.viewerActionBtn, backgroundColor: '#FFDC00', color: '#000' }}
+            onClick={() => downloadSafe(item.url, filename)}
+          >
+            Download
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+function DocThumb({
+  url,
+  label,
+  onClick,
+}: {
+  url: string;
+  label: string;
+  onClick: () => void;
+}) {
+  const isImg = looksLikeImage(url);
+
+  return (
+    <div style={styles.thumbWrap}>
+      {isImg ? (
+        <img src={url} alt={label} style={styles.thumb} onClick={onClick} />
+      ) : (
+        <div style={styles.pdfThumb} onClick={onClick}>
+          <div style={styles.pdfBadge}>PDF</div>
+        </div>
+      )}
+      <span style={{ fontSize: 12 }}>{label}</span>
+    </div>
+  );
+}
+
+/* ---------------------------------
+   Screen
+---------------------------------- */
+
 export default function AdminDrivers() {
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'inactive'>('all');
   const [autoApprove, setAutoApprove] = useState(false);
-  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+
+  const [selectedDoc, setSelectedDoc] = useState<DocViewerItem | null>(null);
+
   const [selectedDriver, setSelectedDriver] = useState<Driver | null>(null);
   const [tripHistory, setTripHistory] = useState<Trip[]>([]);
   const [loadingTrips, setLoadingTrips] = useState(false);
   const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
-    const q = query(
-      collection(firestore, 'drivers'),
-      where('status', 'in', ['pending_approval', 'approved', 'rejected', 'active', 'inactive'])
-    );
+    const q = query(collection(firestore, 'drivers'));
 
     const unsubscribe = onSnapshot(
       q,
       (snapshot) => {
-        const data: Driver[] = snapshot.docs.map((docSnap) => ({
-          id: docSnap.id,
-          ...(docSnap.data() as any),
-        })) as Driver[];
+        const data: Driver[] = snapshot.docs.map((docSnap) => {
+          const raw: any = docSnap.data() || {};
+          const safeStatus = (raw.status as Driver['status']) ?? ('inactive' as Driver['status']);
+          return { id: docSnap.id, ...raw, status: safeStatus } as Driver;
+        });
+
         setDrivers(data);
         setLoading(false);
       },
@@ -146,10 +317,7 @@ export default function AdminDrivers() {
   const fetchDriverTrips = async (driverPhone: string) => {
     try {
       setLoadingTrips(true);
-      const tripsQuery = query(
-        collection(firestore, 'trip_history_driver'),
-        where('driverPhone', '==', driverPhone)
-      );
+      const tripsQuery = query(collection(firestore, 'trip_history_driver'), where('driverPhone', '==', driverPhone));
       const tripsSnap = await getDocs(tripsQuery);
       const trips: Trip[] = tripsSnap.docs.map((docSnap) => ({
         id: docSnap.id,
@@ -164,7 +332,6 @@ export default function AdminDrivers() {
     }
   };
 
-  // Clearer actions & labels
   const setStatus = async (id: string, to: 'active' | 'inactive') => {
     if (!window.confirm(`Set driver status to ${to.toUpperCase()}?`)) return;
     try {
@@ -204,10 +371,7 @@ export default function AdminDrivers() {
     setTripHistory([]);
   };
 
-  const handleFileUpload = async (
-    e: React.ChangeEvent<HTMLInputElement>,
-    field: 'licenseUrl' | 'emiratesIdUrl'
-  ) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, field: 'licenseUrl' | 'emiratesIdUrl') => {
     if (!selectedDriver) return;
     const file = e.target.files?.[0];
     if (!file) return;
@@ -218,9 +382,7 @@ export default function AdminDrivers() {
       await uploadBytes(storageRef, file);
       const downloadURL = await getDownloadURL(storageRef);
 
-      await updateDoc(doc(firestore, 'drivers', selectedDriver.id), {
-        [field]: downloadURL,
-      });
+      await updateDoc(doc(firestore, 'drivers', selectedDriver.id), { [field]: downloadURL });
 
       alert(`${field === 'licenseUrl' ? 'License' : 'Emirates ID'} uploaded successfully!`);
       setSelectedDriver((prev) => (prev ? { ...prev, [field]: downloadURL } : prev));
@@ -238,10 +400,12 @@ export default function AdminDrivers() {
     const phone = (driver.phone || '').toLowerCase();
     const searchTerm = search.toLowerCase();
     const matchesSearch = name.includes(searchTerm) || phone.includes(searchTerm);
+
     const matchesStatus =
       filterStatus === 'all' ||
       (filterStatus === 'active' && driver.status === 'active') ||
       (filterStatus === 'inactive' && driver.status === 'inactive');
+
     return matchesSearch && matchesStatus;
   });
 
@@ -253,10 +417,12 @@ export default function AdminDrivers() {
       for (const driver of pendingDrivers) {
         const driverRef = doc(firestore, 'drivers', driver.id);
         await updateDoc(driverRef, {
-          status: 'approved',
+          status: 'active',
           verified: true,
-          recovery: true, // ✅ default: can receive jobs
+          recovery: true,
+          adminNote: '',
         });
+
         if (driver.expoPushToken) {
           await sendPushNotification(
             driver.expoPushToken,
@@ -276,10 +442,12 @@ export default function AdminDrivers() {
     try {
       const driverRef = doc(firestore, 'drivers', driverId);
       await updateDoc(driverRef, {
-        status: 'approved',
+        status: 'active',
         verified: true,
-        recovery: true, // ✅ default: can receive jobs
+        recovery: true,
+        adminNote: '',
       });
+
       const driver = drivers.find((d) => d.id === driverId);
       if (driver?.expoPushToken) {
         await sendPushNotification(
@@ -298,9 +466,16 @@ export default function AdminDrivers() {
   const handleReject = async (driverId: string) => {
     const reason = prompt('Enter rejection reason (shown to driver):');
     if (!reason) return;
+
     try {
       const driverRef = doc(firestore, 'drivers', driverId);
-      await updateDoc(driverRef, { status: 'rejected', adminNote: reason });
+      await updateDoc(driverRef, {
+        status: 'rejected',
+        verified: false,
+        recovery: false,
+        adminNote: reason,
+      });
+
       const driver = drivers.find((d) => d.id === driverId);
       if (driver?.expoPushToken) {
         await sendPushNotification(driver.expoPushToken, '❌ HILBU Rejected', reason);
@@ -310,6 +485,11 @@ export default function AdminDrivers() {
       console.error('Error rejecting driver:', error);
       alert('Error rejecting driver.');
     }
+  };
+
+  const openDoc = (url: string, label?: string) => {
+    if (!url) return;
+    setSelectedDoc({ url, label, filename: looksLikePdf(url) ? 'document.pdf' : 'image.jpg' });
   };
 
   if (loading) {
@@ -324,12 +504,13 @@ export default function AdminDrivers() {
     <div style={styles.container}>
       <h1 style={styles.title}>🚚 Manage Drivers</h1>
 
-      {selectedImage && <ImageModal imageUrl={selectedImage} onClose={() => setSelectedImage(null)} />}
+      {selectedDoc && <DocViewerModal item={selectedDoc} onClose={() => setSelectedDoc(null)} />}
 
       {pendingDrivers.length > 0 && (
         <div style={styles.pendingSection}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <h2 style={styles.pendingTitle}>📝 Pending Driver Approvals ({pendingDrivers.length})</h2>
+
             <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <input type="checkbox" checked={autoApprove} onChange={() => setAutoApprove(!autoApprove)} />
               Auto-Approve Mode
@@ -340,6 +521,7 @@ export default function AdminDrivers() {
               )}
             </label>
           </div>
+
           <div style={styles.pendingList}>
             {pendingDrivers.map((driver) => (
               <div key={driver.id} style={styles.pendingCard}>
@@ -367,26 +549,18 @@ export default function AdminDrivers() {
                     </p>
                     <div style={{ display: 'flex', gap: 10 }}>
                       {driver.licenseDocs.front && (
-                        <div style={styles.thumbWrap}>
-                          <img
-                            src={driver.licenseDocs.front}
-                            alt="License Front"
-                            style={styles.thumb}
-                            onClick={() => setSelectedImage(driver.licenseDocs?.front || null)}
-                          />
-                          <span style={{ fontSize: 12 }}>Front</span>
-                        </div>
+                        <DocThumb
+                          url={driver.licenseDocs.front}
+                          label="Front"
+                          onClick={() => openDoc(driver.licenseDocs!.front!, 'License - Front')}
+                        />
                       )}
                       {driver.licenseDocs.back && (
-                        <div style={styles.thumbWrap}>
-                          <img
-                            src={driver.licenseDocs.back}
-                            alt="License Back"
-                            style={styles.thumb}
-                            onClick={() => setSelectedImage(driver.licenseDocs?.back || null)}
-                          />
-                          <span style={{ fontSize: 12 }}>Back</span>
-                        </div>
+                        <DocThumb
+                          url={driver.licenseDocs.back}
+                          label="Back"
+                          onClick={() => openDoc(driver.licenseDocs!.back!, 'License - Back')}
+                        />
                       )}
                     </div>
                   </div>
@@ -399,26 +573,18 @@ export default function AdminDrivers() {
                     </p>
                     <div style={{ display: 'flex', gap: 10 }}>
                       {driver.idCardDocs.front && (
-                        <div style={styles.thumbWrap}>
-                          <img
-                            src={driver.idCardDocs.front}
-                            alt="ID Front"
-                            style={styles.thumb}
-                            onClick={() => setSelectedImage(driver.idCardDocs?.front || null)}
-                          />
-                          <span style={{ fontSize: 12 }}>Front</span>
-                        </div>
+                        <DocThumb
+                          url={driver.idCardDocs.front}
+                          label="Front"
+                          onClick={() => openDoc(driver.idCardDocs!.front!, 'Emirates ID - Front')}
+                        />
                       )}
                       {driver.idCardDocs.back && (
-                        <div style={styles.thumbWrap}>
-                          <img
-                            src={driver.idCardDocs.back}
-                            alt="ID Back"
-                            style={styles.thumb}
-                            onClick={() => setSelectedImage(driver.idCardDocs?.back || null)}
-                          />
-                          <span style={{ fontSize: 12 }}>Back</span>
-                        </div>
+                        <DocThumb
+                          url={driver.idCardDocs.back}
+                          label="Back"
+                          onClick={() => openDoc(driver.idCardDocs!.back!, 'Emirates ID - Back')}
+                        />
                       )}
                     </div>
                   </div>
@@ -463,7 +629,6 @@ export default function AdminDrivers() {
         <div style={styles.list}>
           {filteredDrivers.map((driver) => {
             const isActive = driver.status === 'active';
-            // ✅ Default: if recovery is undefined, treat as enabled
             const hasRecovery = driver.recovery !== false;
             const statusBtnLabel = isActive ? 'Set Inactive' : 'Set Active';
             const recoveryBtnLabel = hasRecovery ? 'Disable Recovery Jobs' : 'Enable Recovery Jobs';
@@ -480,8 +645,7 @@ export default function AdminDrivers() {
                   ⚙️ Status: <span style={styles.value}>{driver.status || 'inactive'}</span>
                 </p>
                 <p style={styles.label}>
-                  🛠 Recovery Jobs:{' '}
-                  <span style={styles.value}>{hasRecovery ? 'Enabled' : 'Disabled'}</span>
+                  🛠 Recovery Jobs: <span style={styles.value}>{hasRecovery ? 'Enabled' : 'Disabled'}</span>
                 </p>
 
                 {typeof driver.averageRating === 'number' && (
@@ -542,6 +706,7 @@ export default function AdminDrivers() {
         <div style={styles.modalOverlay}>
           <div style={styles.modal} role="dialog" aria-modal="true">
             <h2>{selectedDriver.name || 'Driver'}'s Profile</h2>
+
             <p>
               <strong>📧 Email:</strong> {selectedDriver.email || 'N/A'}
             </p>
@@ -555,24 +720,18 @@ export default function AdminDrivers() {
               <strong>🔢 Plate Number:</strong> {selectedDriver.plateNumber || 'N/A'}
             </p>
 
-            {typeof selectedDriver.averageRating === 'number' && (
-              <p>
-                <strong>⭐ Average Rating:</strong> {Number(selectedDriver.averageRating).toFixed(1)}
-                <span style={{ color: '#666', marginLeft: 8 }}>
-                  ({selectedDriver.ratingCount || 0}{' '}
-                  {selectedDriver.ratingCount === 1 ? 'rating' : 'ratings'})
-                </span>
-              </p>
-            )}
-
-            {/* Old storage-based URLs (still supported) */}
             <div style={{ marginTop: 12 }}>
               <p>
                 <strong>📄 License (URL):</strong>{' '}
                 {selectedDriver.licenseUrl ? (
-                  <a href={selectedDriver.licenseUrl} target="_blank" rel="noopener noreferrer">
-                    View
-                  </a>
+                  <span style={{ display: 'inline-flex', gap: 8, alignItems: 'center' }}>
+                    <a href={selectedDriver.licenseUrl} target="_blank" rel="noopener noreferrer">
+                      View
+                    </a>
+                    <button style={styles.smallBtn} onClick={() => openDoc(selectedDriver.licenseUrl!, 'License (URL)')}>
+                      Preview
+                    </button>
+                  </span>
                 ) : (
                   'Not uploaded'
                 )}
@@ -584,9 +743,17 @@ export default function AdminDrivers() {
               <p>
                 <strong>🆔 Emirates ID (URL):</strong>{' '}
                 {selectedDriver.emiratesIdUrl ? (
-                  <a href={selectedDriver.emiratesIdUrl} target="_blank" rel="noopener noreferrer">
-                    View
-                  </a>
+                  <span style={{ display: 'inline-flex', gap: 8, alignItems: 'center' }}>
+                    <a href={selectedDriver.emiratesIdUrl} target="_blank" rel="noopener noreferrer">
+                      View
+                    </a>
+                    <button
+                      style={styles.smallBtn}
+                      onClick={() => openDoc(selectedDriver.emiratesIdUrl!, 'Emirates ID (URL)')}
+                    >
+                      Preview
+                    </button>
+                  </span>
                 ) : (
                   'Not uploaded'
                 )}
@@ -594,7 +761,6 @@ export default function AdminDrivers() {
               <input type="file" onChange={(e) => handleFileUpload(e, 'emiratesIdUrl')} disabled={uploading} />
             </div>
 
-            {/* Show Firestore base64 docs */}
             {(selectedDriver.licenseDocs || selectedDriver.idCardDocs) && (
               <div style={{ marginTop: 20 }}>
                 <h3>Uploaded Documents</h3>
@@ -606,26 +772,18 @@ export default function AdminDrivers() {
                     </p>
                     <div style={{ display: 'flex', gap: 10 }}>
                       {selectedDriver.licenseDocs.front && (
-                        <div style={styles.thumbWrap}>
-                          <img
-                            src={selectedDriver.licenseDocs.front}
-                            alt="License Front"
-                            style={styles.thumb}
-                            onClick={() => setSelectedImage(selectedDriver.licenseDocs?.front || null)}
-                          />
-                          <span style={{ fontSize: 12 }}>Front</span>
-                        </div>
+                        <DocThumb
+                          url={selectedDriver.licenseDocs.front}
+                          label="Front"
+                          onClick={() => openDoc(selectedDriver.licenseDocs!.front!, 'License - Front')}
+                        />
                       )}
                       {selectedDriver.licenseDocs.back && (
-                        <div style={styles.thumbWrap}>
-                          <img
-                            src={selectedDriver.licenseDocs.back}
-                            alt="License Back"
-                            style={styles.thumb}
-                            onClick={() => setSelectedImage(selectedDriver.licenseDocs?.back || null)}
-                          />
-                          <span style={{ fontSize: 12 }}>Back</span>
-                        </div>
+                        <DocThumb
+                          url={selectedDriver.licenseDocs.back}
+                          label="Back"
+                          onClick={() => openDoc(selectedDriver.licenseDocs!.back!, 'License - Back')}
+                        />
                       )}
                     </div>
                   </div>
@@ -638,26 +796,18 @@ export default function AdminDrivers() {
                     </p>
                     <div style={{ display: 'flex', gap: 10 }}>
                       {selectedDriver.idCardDocs.front && (
-                        <div style={styles.thumbWrap}>
-                          <img
-                            src={selectedDriver.idCardDocs.front}
-                            alt="ID Front"
-                            style={styles.thumb}
-                            onClick={() => setSelectedImage(selectedDriver.idCardDocs?.front || null)}
-                          />
-                          <span style={{ fontSize: 12 }}>Front</span>
-                        </div>
+                        <DocThumb
+                          url={selectedDriver.idCardDocs.front}
+                          label="Front"
+                          onClick={() => openDoc(selectedDriver.idCardDocs!.front!, 'Emirates ID - Front')}
+                        />
                       )}
                       {selectedDriver.idCardDocs.back && (
-                        <div style={styles.thumbWrap}>
-                          <img
-                            src={selectedDriver.idCardDocs.back}
-                            alt="ID Back"
-                            style={styles.thumb}
-                            onClick={() => setSelectedImage(selectedDriver.idCardDocs?.back || null)}
-                          />
-                          <span style={{ fontSize: 12 }}>Back</span>
-                        </div>
+                        <DocThumb
+                          url={selectedDriver.idCardDocs.back}
+                          label="Back"
+                          onClick={() => openDoc(selectedDriver.idCardDocs!.back!, 'Emirates ID - Back')}
+                        />
                       )}
                     </div>
                   </div>
@@ -691,46 +841,24 @@ export default function AdminDrivers() {
   );
 }
 
+/* ---------------------------------
+   Styles
+---------------------------------- */
+
 const styles: Record<string, React.CSSProperties> = {
   container: { padding: 24, backgroundColor: '#fff', minHeight: '100vh', fontFamily: 'Arial, sans-serif' },
   title: { fontSize: 26, fontWeight: 'bold', color: '#000', marginBottom: 20, textAlign: 'center' },
 
-  // Pending section
   pendingSection: { backgroundColor: '#fff', padding: 20, marginBottom: 30, borderRadius: 12, border: '1px solid #eee' },
   pendingTitle: { fontSize: 22, fontWeight: 'bold', color: '#000', marginBottom: 12 },
   pendingList: { display: 'flex', flexDirection: 'column', gap: 16 },
   pendingCard: { backgroundColor: '#f9f9f9', padding: 16, borderRadius: 10, border: '1px solid #ccc' },
   pendingButtons: { display: 'flex', gap: 10, marginTop: 10 },
-  approveButton: {
-    backgroundColor: '#28a745',
-    color: '#fff',
-    padding: '8px 14px',
-    borderRadius: 6,
-    fontWeight: 'bold',
-    border: 'none',
-    cursor: 'pointer',
-  },
-  rejectButton: {
-    backgroundColor: '#dc3545',
-    color: '#fff',
-    padding: '8px 14px',
-    borderRadius: 6,
-    fontWeight: 'bold',
-    border: 'none',
-    cursor: 'pointer',
-  },
-  approveAllBtn: {
-    marginLeft: 10,
-    padding: '5px 10px',
-    backgroundColor: '#28a745',
-    color: 'white',
-    border: 'none',
-    borderRadius: 4,
-    cursor: 'pointer',
-    fontWeight: 'bold',
-  },
 
-  // Search/list
+  approveButton: { backgroundColor: '#28a745', color: '#fff', padding: '8px 14px', borderRadius: 6, fontWeight: 'bold', border: 'none', cursor: 'pointer' },
+  rejectButton: { backgroundColor: '#dc3545', color: '#fff', padding: '8px 14px', borderRadius: 6, fontWeight: 'bold', border: 'none', cursor: 'pointer' },
+  approveAllBtn: { marginLeft: 10, padding: '5px 10px', backgroundColor: '#28a745', color: 'white', border: 'none', borderRadius: 4, cursor: 'pointer', fontWeight: 'bold' },
+
   searchContainer: { display: 'flex', gap: 12, marginBottom: 20, justifyContent: 'center' },
   searchInput: { padding: '8px 12px', borderRadius: 8, border: '1px solid #ccc', width: 220 },
   filterSelect: { padding: '8px 12px', borderRadius: 8, border: '1px solid #ccc' },
@@ -742,84 +870,45 @@ const styles: Record<string, React.CSSProperties> = {
   value: { fontWeight: 'normal' },
 
   buttons: { display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 12 },
-  button: {
-    backgroundColor: '#000',
-    color: '#FFDC00',
-    padding: '10px 14px',
-    borderRadius: 8,
-    fontWeight: 'bold',
-    cursor: 'pointer',
-    border: 'none',
-  },
-  viewButton: {
-    backgroundColor: '#007BFF',
-    color: '#fff',
-    padding: '10px 14px',
-    borderRadius: 8,
-    fontWeight: 'bold',
-    cursor: 'pointer',
-    border: 'none',
-  },
+  button: { backgroundColor: '#000', color: '#FFDC00', padding: '10px 14px', borderRadius: 8, fontWeight: 'bold', cursor: 'pointer', border: 'none' },
+  viewButton: { backgroundColor: '#007BFF', color: '#fff', padding: '10px 14px', borderRadius: 8, fontWeight: 'bold', cursor: 'pointer', border: 'none' },
 
-  // Loading
+  smallBtn: { backgroundColor: '#000', color: '#FFDC00', padding: '6px 10px', borderRadius: 8, fontWeight: 'bold', cursor: 'pointer', border: 'none', fontSize: 12 },
+
   loadingContainer: { display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', backgroundColor: '#fff' },
   loadingText: { fontSize: 20, color: '#000' },
 
-  // Modal
-  modalOverlay: {
-    position: 'fixed',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    display: 'flex',
+  modalOverlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 },
+  modal: { backgroundColor: '#fff', padding: 20, borderRadius: 12, width: 480, maxHeight: '80vh', overflowY: 'auto' },
+  closeButton: { marginTop: 20, backgroundColor: '#d9534f', color: '#fff', padding: '10px 14px', borderRadius: 8, fontWeight: 'bold', border: 'none', cursor: 'pointer' },
+
+  thumbWrap: { display: 'flex', flexDirection: 'column', alignItems: 'center' },
+  thumb: { width: 80, height: 50, borderRadius: 6, border: '1px solid #ccc', cursor: 'pointer', objectFit: 'cover' },
+
+  pdfThumb: { width: 80, height: 50, borderRadius: 6, border: '1px solid #ccc', cursor: 'pointer', backgroundColor: '#111', display: 'flex', alignItems: 'center', justifyContent: 'center' },
+  pdfBadge: { backgroundColor: '#FFDC00', color: '#000', borderRadius: 8, padding: '4px 8px', fontWeight: 900, fontSize: 12 },
+
+  viewerOverlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.82)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2500, padding: 16 },
+  viewerBox: { width: 'min(980px, 95vw)', maxHeight: '90vh', backgroundColor: '#fff', borderRadius: 14, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.4)', display: 'flex', flexDirection: 'column' },
+  viewerHeader: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 14px', borderBottom: '1px solid #eee' },
+  viewerCloseBtn: { border: 'none', background: '#000', color: '#FFDC00', borderRadius: 10, padding: '6px 10px', cursor: 'pointer', fontWeight: 900 },
+  viewerContent: { padding: 12, overflow: 'auto', backgroundColor: '#fafafa', flex: 1 },
+  pdfFrame: { width: '100%', height: '72vh', border: '0', borderRadius: 10, backgroundColor: '#fff' },
+  viewerImage: { width: '100%', maxHeight: '72vh', objectFit: 'contain', borderRadius: 10, backgroundColor: '#fff', display: 'block', margin: '0 auto' },
+  unknownDocBox: { width: '100%', height: '200px', borderRadius: 10, border: '1px dashed #bbb', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', backgroundColor: '#fff' },
+
+  viewerActions: { display: 'flex', justifyContent: 'flex-end', gap: 10, padding: 12, borderTop: '1px solid #eee', backgroundColor: '#fff' },
+  viewerActionBtn: {
+    backgroundColor: '#000',
+    color: '#FFDC00',
+    padding: '10px 14px',
+    borderRadius: 10,
+    textDecoration: 'none',
+    fontWeight: 900,
+    display: 'inline-flex',
     alignItems: 'center',
     justifyContent: 'center',
-    zIndex: 1000,
-  },
-  modal: { backgroundColor: '#fff', padding: 20, borderRadius: 12, width: 480, maxHeight: '80vh', overflowY: 'auto' },
-  closeButton: {
-    marginTop: 20,
-    backgroundColor: '#d9534f',
-    color: '#fff',
-    padding: '10px 14px',
-    borderRadius: 8,
-    fontWeight: 'bold',
     border: 'none',
     cursor: 'pointer',
   },
-
-  // Image viewer
-  imageModalOverlay: {
-    position: 'fixed',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.8)',
-    display: 'flex',
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 2000,
-  },
-  imageModalBox: {
-    maxWidth: '90%',
-    maxHeight: '90%',
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    background: 'transparent',
-  },
-  downloadBtn: {
-    marginTop: 20,
-    padding: '10px 20px',
-    backgroundColor: '#FFDC00',
-    color: '#000',
-    borderRadius: 5,
-    textDecoration: 'none',
-    fontWeight: 'bold',
-  },
-  thumbWrap: { display: 'flex', flexDirection: 'column', alignItems: 'center' },
-  thumb: { width: 80, height: 50, borderRadius: 6, border: '1px solid #ccc', cursor: 'pointer', objectFit: 'cover' },
 };
