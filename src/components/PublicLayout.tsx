@@ -1,4 +1,5 @@
 // FILE: src/components/PublicLayout.tsx
+import React from "react";
 import { Outlet, Link } from "react-router-dom";
 import "../screens/Home.css";
 
@@ -59,6 +60,127 @@ function SocialIcon({ kind, href }: { kind: SocialKind; href: string }) {
   );
 }
 
+/* === Small modern header icon links (HEADER ONLY) === */
+function HeaderIconLink({
+  to,
+  label,
+  icon,
+}: {
+  to: string;
+  label: string;
+  icon: React.ReactNode;
+}) {
+  const baseStyle: React.CSSProperties = {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    height: 40,
+    padding: "0 12px",
+    borderRadius: 999,
+    border: "1px solid rgba(255, 220, 0, 0.85)",
+    background: "rgba(0,0,0,0.55)",
+    color: "#fff",
+    textDecoration: "none",
+    fontWeight: 700,
+    lineHeight: 1,
+    boxShadow: "0 6px 18px rgba(0,0,0,0.28)",
+    backdropFilter: "blur(8px)",
+    WebkitBackdropFilter: "blur(8px)",
+    whiteSpace: "nowrap",
+    transition: "background 160ms ease, color 160ms ease, transform 160ms ease, border-color 160ms ease",
+  };
+
+  const iconWrapBase: React.CSSProperties = {
+    width: 28,
+    height: 28,
+    borderRadius: 999,
+    background: "#FFDC00",
+    color: "#000",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    flex: "0 0 auto",
+    transition: "background 160ms ease, color 160ms ease",
+  };
+
+  const textStyle: React.CSSProperties = {
+    fontSize: 14,
+    letterSpacing: 0.2,
+  };
+
+  return (
+    <Link
+      to={to}
+      style={baseStyle}
+      title={label}
+      aria-label={label}
+      onMouseEnter={(e) => {
+        const el = e.currentTarget as HTMLAnchorElement;
+        el.style.background = "#ffffff";
+        el.style.color = "#000000";
+        el.style.borderColor = "rgba(255,255,255,0.95)";
+        el.style.transform = "translateY(-1px)";
+
+        const iconEl = el.querySelector(".header-icon-wrap") as HTMLSpanElement | null;
+        if (iconEl) {
+          iconEl.style.background = "#000000";
+          iconEl.style.color = "#ffffff";
+        }
+      }}
+      onMouseLeave={(e) => {
+        const el = e.currentTarget as HTMLAnchorElement;
+        el.style.background = "rgba(0,0,0,0.55)";
+        el.style.color = "#ffffff";
+        el.style.borderColor = "rgba(255, 220, 0, 0.85)";
+        el.style.transform = "translateY(0px)";
+
+        const iconEl = el.querySelector(".header-icon-wrap") as HTMLSpanElement | null;
+        if (iconEl) {
+          iconEl.style.background = "#FFDC00";
+          iconEl.style.color = "#000000";
+        }
+      }}
+    >
+      <span className="header-icon-wrap" style={iconWrapBase}>
+        {icon}
+      </span>
+      <span style={textStyle}>{label}</span>
+    </Link>
+  );
+}
+
+function DocIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        fill="currentColor"
+        d="M6 2h9l5 5v15a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Zm8 1.5V8h4.5L14 3.5ZM7 12h10v2H7v-2Zm0 4h10v2H7v-2Zm0-8h6v2H7V8Z"
+      />
+    </svg>
+  );
+}
+function ShieldIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        fill="currentColor"
+        d="M12 2 20 6v6c0 5-3.4 9.4-8 10-4.6-.6-8-5-8-10V6l8-4Zm0 2.2L6 7v5c0 3.9 2.5 7.4 6 8 3.5-.6 6-4.1 6-8V7l-6-2.8Z"
+      />
+    </svg>
+  );
+}
+function MailIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        fill="currentColor"
+        d="M20 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2Zm0 4-8 5-8-5V6l8 5 8-5v2Z"
+      />
+    </svg>
+  );
+}
+
 export default function PublicLayout() {
   const socials = {
     facebook: "https://www.facebook.com/hilbuapp/",
@@ -73,20 +195,39 @@ export default function PublicLayout() {
       {/* ===== Fixed Header (GLOBAL) ===== */}
       <div className="site-header">
         <div className="header-left">
-          <img src="/icon.png" alt="HILBU" className="header-logo" />
+          {/* Click logo -> Home */}
+          <Link
+            to="/"
+            aria-label="Go to Home"
+            title="Home"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              textDecoration: "none",
+            }}
+          >
+            <img src="/icon.png" alt="HILBU" className="header-logo" />
+          </Link>
+
           <div className="header-tagline">Your Trusted Car Recovery Partner</div>
         </div>
 
-        <nav className="header-right">
-          <Link to="/terms" className="header-pill">
-            Terms &amp; Conditions
-          </Link>
-          <Link to="/privacy" className="header-pill">
-            Privacy Policy
-          </Link>
-          <Link to="/contact" className="header-pill">
-            Contact Us
-          </Link>
+        <nav className="header-right" aria-label="Header navigation">
+          {/* Modern small links (same routes) */}
+          <div
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 10,
+              marginRight: 10,
+              flexWrap: "wrap",
+              justifyContent: "flex-end",
+            }}
+          >
+            <HeaderIconLink to="/terms" label="Terms" icon={<DocIcon />} />
+            <HeaderIconLink to="/privacy" label="Privacy" icon={<ShieldIcon />} />
+            <HeaderIconLink to="/contact" label="Contact" icon={<MailIcon />} />
+          </div>
 
           <div className="socials header-socials">
             <SocialIcon kind="instagram" href={socials.instagram} />
@@ -103,7 +244,7 @@ export default function PublicLayout() {
       {/* Page content */}
       <Outlet />
 
-      {/* ===== Footer (GLOBAL) ===== */}
+      {/* ===== Footer (GLOBAL) - KEEP ORIGINAL ===== */}
       <footer className="home-footer">
         <div className="footer-left">
           <img src="/icon.png" alt="HILBU" className="footer-logo" />

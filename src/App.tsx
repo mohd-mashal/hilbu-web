@@ -101,7 +101,11 @@ function StoreBadgeWithQR({
                   height: LOGO_SIZE,
                 }}
               >
-                <img src="/InvoiceLogo.png" alt="HILBU" style={{ ...styles.qrLogo, width: LOGO_SIZE - 6, height: LOGO_SIZE - 6 }} />
+                <img
+                  src="/InvoiceLogo.png"
+                  alt="HILBU"
+                  style={{ ...styles.qrLogo, width: LOGO_SIZE - 6, height: LOGO_SIZE - 6 }}
+                />
               </div>
             </div>
             <div style={styles.qrLabelSmall}>{label}</div>
@@ -201,7 +205,7 @@ const App = () => {
         <p style={styles.subtitle}>Sign in with your admin credentials</p>
 
         <div style={styles.passwordRow}>
-          <Mail size={16} color="#999" style={{ marginRight: 8 }} />
+          <Mail size={14} color="#999" style={{ marginRight: 8 }} />
           <input
             type="email"
             placeholder="Admin Email"
@@ -212,7 +216,7 @@ const App = () => {
         </div>
 
         <div style={styles.passwordRow}>
-          <Lock size={16} color="#999" style={{ marginRight: 8 }} />
+          <Lock size={14} color="#999" style={{ marginRight: 8 }} />
           <input
             type="password"
             placeholder="Admin Password"
@@ -323,20 +327,20 @@ const App = () => {
   return (
     <BrowserRouter>
       <Routes>
-     {/* Public pages (WRAPPED by PublicLayout) */}
-    <Route element={<PublicLayout />}>
-    <Route path="/" element={<PublicHome />} />
-    <Route path="/privacy" element={<Privacy />} />
-    <Route path="/terms" element={<Terms />} />
-    <Route path="/contact" element={<Contact />} />
-    </Route>
+        {/* Public pages (WRAPPED by PublicLayout) */}
+        <Route element={<PublicLayout />}>
+          <Route path="/" element={<PublicHome />} />
+          <Route path="/privacy" element={<Privacy />} />
+          <Route path="/terms" element={<Terms />} />
+          <Route path="/contact" element={<Contact />} />
+        </Route>
 
-    {/* Admin entry */}
-    <Route path="/admin" element={authenticated ? AdminLayout : LoginScreen} />
+        {/* Admin entry */}
+        <Route path="/admin" element={authenticated ? AdminLayout : LoginScreen} />
 
-    {/* Fallback */}
-    <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+        {/* Fallback */}
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
     </BrowserRouter>
   );
 };
@@ -434,9 +438,11 @@ const styles: Record<string, React.CSSProperties> = {
     backgroundColor: 'rgba(255,255,255,0.75)',
     zIndex: 1,
   },
+
+  // ✅ Smaller overall card height (less padding)
   loginCard: {
     width: 370,
-    padding: 28,
+    padding: 20,
     borderRadius: 16,
     backgroundColor: '#fdfdfd',
     boxShadow: '0 10px 40px rgba(0,0,0,0.2)',
@@ -449,45 +455,58 @@ const styles: Record<string, React.CSSProperties> = {
     width: 240,
     height: 70,
     objectFit: 'contain',
-    marginBottom: 10,
+    marginBottom: 10, 
   },
+
+  // ✅ Reduce top spacing
   tagline: {
     fontSize: 14,
     color: '#FFDC00',
-    marginBottom: 20,
+    marginBottom: 14, // was 20
     fontWeight: 600,
   },
   title: {
     fontSize: 20,
     fontWeight: 'bold',
     color: '#000',
-    marginBottom: 8,
+    marginBottom: 6, // was 8
   },
   subtitle: {
     fontSize: 13,
     color: '#555',
-    marginBottom: 20,
+    marginBottom: 14, // was 20
   },
+
+  // ✅ Smaller input text height
   inputNoIcon: {
     border: 'none',
     outline: 'none',
+    paddingLeft: 9,
     fontSize: 12,
     flex: 1,
     fontFamily: 'Poppins, sans-serif',
+    padding: 0,
+    height: 20,
+    lineHeight: '20px',
   },
+
+  // ✅ Smaller fields (email/password)
   passwordRow: {
     display: 'flex',
     alignItems: 'center',
     border: '1px solid #ccc',
     borderRadius: 12,
-    padding: '8px 12px',
-    marginBottom: 14,
+    padding: '3px 12px', 
+    minHeight: 30,       
+    marginBottom: 14,    
   },
+
+  // ✅ Reduce spacing under remember
   rememberRow: {
     display: 'flex',
     alignItems: 'center',
     gap: 8,
-    marginBottom: 20,
+    marginBottom: 20, 
     fontSize: 14,
     color: '#000',
   },
@@ -499,6 +518,7 @@ const styles: Record<string, React.CSSProperties> = {
     cursor: 'pointer',
   },
   rememberText: { fontSize: 12, color: '#000' },
+
   loginButton: {
     width: '100%',
     backgroundColor: '#FFDC00',
@@ -508,26 +528,28 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#000',
     border: 'none',
     cursor: 'pointer',
-    padding: '14px 0',
+    padding: '14px 0', 
     display: 'flex',
     justifyContent: 'center',
     alignItems: 'center',
     gap: 8,
   },
+
+  // ✅ Reduce bottom spacing
   footer: {
     fontSize: 12,
     color: '#888',
-    marginTop: 30,
+    marginTop: 18, 
   },
   storeRow: {
     display: 'flex',
     justifyContent: 'center',
     gap: 10,
-    marginTop: 10,
+    marginTop: 10, 
     position: 'relative',
   },
   storeMiniIconActive: {
-    height: 36,
+    height: 36, 
     opacity: 1,
     cursor: 'pointer',
     borderRadius: 6,

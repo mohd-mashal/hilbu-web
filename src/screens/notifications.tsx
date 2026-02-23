@@ -210,7 +210,7 @@ const styles: Record<string, React.CSSProperties> = {
     backgroundColor: '#FFDC00',
     borderRadius: 16,
     padding: 20,
-    boxShadow: '0 6px 12px rgba(0,0,0,0.1)',
+    boxShadow: '0 3px 12px rgba(0,0,0,0.1)',
     display: 'flex',
     flexDirection: 'column',
     gap: 16,

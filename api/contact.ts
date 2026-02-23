@@ -1,93 +1,126 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import nodemailer from "nodemailer";
+import { Resend } from "resend";
+import fs from "fs";
+import path from "path";
 
-type Body = {
-  name?: string;
-  email?: string;
-  subject?: string;
-  message?: string;
-};
+function json(res: VercelResponse, status: number, body: Record<string, unknown>) {
+  res.status(status);
+  res.setHeader("Content-Type", "application/json; charset=utf-8");
+  res.setHeader("Cache-Control", "no-store");
+  res.end(JSON.stringify(body));
+}
 
-function escapeHtml(s: string) {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
+function safeText(v: any, max = 5000) {
+  const s = String(v ?? "").trim();
+  return s.length > max ? s.slice(0, max) : s;
+}
+
+function stripQuotes(s: string) {
+  const t = s.trim();
+  if ((t.startsWith('"') && t.endsWith('"')) || (t.startsWith("'") && t.endsWith("'"))) {
+    return t.slice(1, -1).trim();
+  }
+  return t;
+}
+
+/**
+ * Fallback loader for LOCAL dev only:
+ * If vercel dev doesn't inject env into the function, read .env.local and set missing values.
+ * On Vercel production this file doesn't exist, so it does nothing.
+ */
+function loadEnvFallback() {
+  try {
+    const envPath = path.join(process.cwd(), ".env.local");
+    if (!fs.existsSync(envPath)) return;
+
+    const content = fs.readFileSync(envPath, "utf8");
+    for (const line of content.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) continue;
+      const idx = trimmed.indexOf("=");
+      if (idx === -1) continue;
+
+      const key = trimmed.slice(0, idx).trim();
+      const value = stripQuotes(trimmed.slice(idx + 1).trim());
+
+      if (key && process.env[key] == null) {
+        process.env[key] = value;
+      }
+    }
+  } catch {
+    // ignore
+  }
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  // CORS (safe for your web app)
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "POST,OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  if (req.method === "OPTIONS") return res.status(204).end();
+  if (req.method !== "POST") return json(res, 405, { ok: false, error: "Method not allowed" });
 
-  if (req.method === "OPTIONS") return res.status(200).end();
-  if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
+  // ensure env exists locally
+  loadEnvFallback();
+
+  const to = (process.env.CONTACT_TO_EMAIL || "").trim();
+  const apiKey = (process.env.RESEND_API_KEY || "").trim();
+
+  if (!to || !apiKey) {
+    return json(res, 500, {
+      ok: false,
+      error: "Server email env vars not configured",
+      missing: {
+        CONTACT_TO_EMAIL: !to,
+        RESEND_API_KEY: !apiKey,
+      },
+    });
+  }
+
+  const body: any =
+    typeof req.body === "string"
+      ? (() => {
+          try {
+            return JSON.parse(req.body);
+          } catch {
+            return {};
+          }
+        })()
+      : req.body || {};
+
+  const name = safeText(body.name, 200);
+  const email = safeText(body.email, 200);
+  const message = safeText(body.message, 5000);
+  const phone = safeText(body.phone, 100);
+  const subjectFromUser = safeText(body.subject, 200);
+
+  if (!name || !email || !message) {
+    return json(res, 400, { ok: false, error: "Missing fields" });
+  }
+
+  const subject = subjectFromUser ? `HILBU Contact: ${subjectFromUser}` : `HILBU Contact Message`;
+
+  const text =
+`New message from HILBU Contact Form
+
+Name: ${name}
+Email: ${email}
+Phone: ${phone || "-"}
+
+Message:
+${message}
+`;
 
   try {
-    const { name, email, subject, message } = (req.body || {}) as Body;
+    const resend = new Resend(apiKey);
 
-    const cleanName = (name || "").trim();
-    const cleanEmail = (email || "").trim();
-    const cleanSubject = (subject || "").trim();
-    const cleanMessage = (message || "").trim();
-
-    if (cleanName.length < 2) return res.status(400).json({ error: "Name is required" });
-    if (cleanEmail.length < 5) return res.status(400).json({ error: "Email is required" });
-    if (cleanSubject.length < 2) return res.status(400).json({ error: "Subject is required" });
-    if (cleanMessage.length < 2) return res.status(400).json({ error: "Message is required" });
-
-    const EMAIL_USER = process.env.EMAIL_USER || "";
-    const EMAIL_PASS = process.env.EMAIL_PASS || "";
-
-    if (!EMAIL_USER || !EMAIL_PASS) {
-      return res.status(500).json({ error: "Server email is not configured (missing env vars)." });
-    }
-
-    // Hotmail/Outlook SMTP (works with App Password)
-    const transporter = nodemailer.createTransport({
-      host: "smtp.office365.com",
-      port: 587,
-      secure: false,
-      auth: {
-        user: EMAIL_USER,
-        pass: EMAIL_PASS,
-      },
-      tls: {
-        ciphers: "SSLv3",
-      },
+    await resend.emails.send({
+      from: "HILBU Contact <onboarding@resend.dev>",
+      to: [to],
+      replyTo: email,
+      subject,
+      text,
     });
 
-    const safeName = escapeHtml(cleanName);
-    const safeEmail = escapeHtml(cleanEmail);
-    const safeSubject = escapeHtml(cleanSubject);
-    const safeMessage = escapeHtml(cleanMessage).replace(/\n/g, "<br/>");
-
-    const html = `
-      <div style="font-family:Arial,sans-serif;line-height:1.6">
-        <h2 style="margin:0 0 10px">New Contact Message (HILBU Website)</h2>
-        <p><strong>Name:</strong> ${safeName}</p>
-        <p><strong>Email:</strong> ${safeEmail}</p>
-        <p><strong>Subject:</strong> ${safeSubject}</p>
-        <hr/>
-        <p>${safeMessage}</p>
-      </div>
-    `;
-
-    await transporter.sendMail({
-      from: `"HILBU Contact" <${EMAIL_USER}>`,
-      to: "mohd-mashal@hotmail.com",
-      replyTo: cleanEmail,
-      subject: `HILBU Contact: ${cleanSubject}`,
-      html,
-    });
-
-    return res.status(200).json({ ok: true });
-  } catch (e: any) {
-    return res.status(500).json({
-      error: e?.message || "Email send failed",
-    });
+    return json(res, 200, { ok: true });
+  } catch (e) {
+    console.error("RESEND ERROR:", e);
+    return json(res, 500, { ok: false, error: "Email sending failed" });
   }
 }
