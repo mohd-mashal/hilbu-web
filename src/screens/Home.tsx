@@ -99,7 +99,7 @@ export default function Home() {
             playsInline
             preload="auto"
           >
-            <source src="/home.mp4" type="video/mp4" />
+            <source src="https://res.cloudinary.com/dntrj62dw/video/upload/v1772483551/home_wdavvg.mp4" type="video/mp4" />
           </video>
           <div className="heroVideoOverlay" />
         </div>
