@@ -1,3 +1,5 @@
+/* Home.css */
+
 /* ================== QUICK KNOBS ==================
    ADJUST #1 (space under hero before cards):
    Change ONLY this number to make that big gap smaller/bigger.
@@ -25,6 +27,12 @@
   --shadow-2: rgba(0,0,0,0.12);
   --shadow-3: rgba(0,0,0,0.18);
   --shadow-4: rgba(0,0,0,0.25);
+
+  /* ================== NEW QUICK KNOBS (Truck Visual) ==================
+     Keep normal direction (moving right) - no flip.
+  */
+  --cta-truck-flip: 1;   /* keep 1 (no flip) */
+  --cta-truck-blend: 0;  /* keep 0 (not needed for PNG) */
 }
 
 /* ADJUST #2 (make 'Get connected...' & other card text smaller/bigger) */
@@ -57,11 +65,11 @@
   color: var(--ink-900);
 }
 
+/* Consistent vertical spacing (for all sections by default) */
+.section-gap { margin-top: 50px; margin-bottom: var(--gap-after-hero); }
+
 /* Reduce space under the Hero only */
 .hero.section-gap { margin-bottom: 50px; }
-
-/* Consistent vertical spacing */
-.section-gap { margin-top: 50px; margin-bottom: var(--gap-after-hero); }
 
 /* ===== Fixed Header ===== */
 .site-header {
@@ -83,16 +91,84 @@
   font-weight:700; font-size:.85rem; transition:.2s;
 }
 .header-pill:hover { background: var(--hilbu-yellow); color: var(--hilbu-ink); }
-.header-spacer { height: 110px; width: 100%; }
+
+/* ✅ FIX #1: spacer must match header height exactly (no extra gap) */
+.header-spacer { height: 90px; width: 100%; }
+
+/* ===== Hero Video Background (NEW) ===== */
+.heroVideoHero{
+  width: 100%;
+  max-width: none;          /* full width left/right */
+  padding: 0;               /* edge-to-edge */
+  position: relative;
+  overflow: hidden;
+  border-radius: 0;
+}
+
+/* ✅ FIX #2: remove top margin for hero only (so it touches the header) */
+.heroVideoHero.section-gap{
+  margin-top: 0 !important;
+}
+
+/* background layer */
+.heroVideoBg{
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+}
+
+.heroVideo{
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transform: scale(1.03);
+  filter: saturate(1.05) contrast(1.05);
+}
+
+/* readable overlay */
+.heroVideoOverlay{
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(90deg, rgba(0,0,0,0.62) 0%, rgba(0,0,0,0.40) 52%, rgba(0,0,0,0.20) 100%),
+    radial-gradient(900px 420px at 20% 25%, rgba(255,220,0,0.18) 0%, rgba(255,220,0,0.00) 60%),
+    linear-gradient(180deg, rgba(0,0,0,0.35) 0%, rgba(0,0,0,0.55) 100%);
+}
+
+/* keep hero content centered like before */
+.hero-inner{
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 24px;
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 36px;
+  align-items: center;
+  position: relative;
+  z-index: 2;
+}
+
+/* make text readable on video */
+.heroVideoHero .hero-title{ color: #fff; }
+.heroVideoHero .hero-sub{ color: rgba(255,255,255,0.88); }
+
+/* optional: make shots pop on video */
+.heroVideoHero .shotFrame{
+  background: rgba(255,255,255,0.92);
+  backdrop-filter: blur(6px);
+}
 
 /* ===== Hero ===== */
 .hero {
-  width: 100%; max-width: 1200px; padding: 24px;
-  display: grid; grid-template-columns: 1.2fr 1fr; gap: 36px; align-items: center;
+  width: 100%;
+  display: block;
 }
-.hero-title { font-size: clamp(28px, 4.2vw, 48px); font-weight: 900; line-height: 1.1; margin: 0 0 10px; color: var(--ink-900); }
-.hero-sub { font-size: 1.05rem; line-height: 1.7; color: var(--ink-600); margin: 0 0 18px; }
+.hero-title { font-size: clamp(28px, 4.2vw, 48px); font-weight: 900; line-height: 1.1; margin: 0 0 10px; }
+.hero-sub { font-size: 1.05rem; line-height: 1.7; margin: 0 0 18px; }
 .hero-ctaRow { display: flex; gap: 10px; align-items: center; margin-bottom: 10px; }
+
 .admin-button {
   background: var(--hilbu-yellow); color: var(--hilbu-ink); border:none; border-radius:26px;
   padding:12px 18px; font-weight:800; font-size:1.02rem; cursor:pointer;
@@ -104,11 +180,11 @@
 .hero-right { width: 100%; }
 .shot-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; justify-items: center; }
 .shotFrame{
-  padding:10px; border-radius:22px;
+  padding:7px; border-radius:22px;
   background: linear-gradient(180deg, #ffffff 0%, var(--bg-cream-2) 100%);
   box-shadow: 0 12px 26px var(--shadow-2);
 }
-.shot { width: 100%; max-width: 300px; height:auto; border-radius:18px; display:block; transition: transform .25s ease; }
+.shot { width: 100%; max-width: 400px; height:auto; border-radius:18px; display:block; transition: transform .25s ease; }
 .shot:hover { transform: translateY(-3px) scale(1.01); }
 
 /* ===== Value Props ===== */
@@ -118,13 +194,13 @@
 }
 .vcard {
   background:#fff; border-radius: 28px;
-  padding: var(--vcard-padding) 36px;  /* ADJUST #3 applies here */
+  padding: var(--vcard-padding) 36px;
   box-shadow: 0 18px 42px var(--shadow-1);
   text-align:center;
 }
 .vicon { width: 110px; height:auto; margin: 0 auto 18px; display:block; }
 .vcard h3 { font-size: 26px; margin: 0 0 8px; font-weight: 800; color: var(--ink-900); }
-.vcard p { font-size: var(--vcard-text-size); line-height:1.6; color: var(--ink-700); max-width: 700px; margin:0 auto; } /* ADJUST #2 */
+.vcard p { font-size: var(--vcard-text-size); line-height:1.6; color: var(--ink-700); max-width: 700px; margin:0 auto; }
 
 /* ===== Feature Screens ===== */
 .featureScreens {
@@ -147,15 +223,15 @@
   border-radius:50%;
   background: radial-gradient(circle at 40% 40%, #FFDC00 0%, #f2c800 70%, #f2c800 100%);
   box-shadow: 0 16px 36px rgba(0,0,0,.18);
-  transform: scale(1.15);  /* make circle bigger */
+  transform: scale(1.15);
   transform-origin: center;
 }
 .tiltImage{ position: relative; width: 74%; border-radius: 24px; transform: rotate(-14deg); box-shadow: 0 16px 32px var(--shadow-4); background:#fff; }
 
 /* ===== CTA band ===== */
 .ctaBand{
-  width: var(--cta-width-percent);         /* ADJUST #5 */
-  max-width: var(--cta-max-width);         /* ADJUST #5 */
+  width: var(--cta-width-percent);
+  max-width: var(--cta-max-width);
   margin: 0 auto 88px;
   padding: 48px 44px;
   background:
@@ -171,7 +247,7 @@
 /* Move badges slightly LEFT/RIGHT using ADJUST #4 */
 .ctaBadges{
   display:flex; gap:14px; align-items:center; flex-wrap:wrap;
-  transform: translateX(var(--cta-badges-shift)); /* ADJUST #4 */
+  transform: translateX(var(--cta-badges-shift));
 }
 
 .storeMiniIconActive { height:44px; opacity:1; cursor:pointer; border-radius:8px; transition: transform .12s ease; }
@@ -195,7 +271,47 @@
 }
 .qrLogo { object-fit:contain; }
 .qrLabelSmall { margin-top:6px; font-size:12px; font-weight:600; color:var(--ink-900); }
-.ctaTruck{ width: 100%; max-width: 460px; height: auto; justify-self: end; }
+
+/* ===== CTA Truck (PNG) ===== */
+.ctaTruck{
+  width: 100%;
+  max-width: 640px;     /* keeps it big but not crazy */
+  height: auto;
+  justify-self: end;
+  object-fit: contain;
+  transform: scaleX(var(--cta-truck-flip));
+
+  /* crisp render */
+  will-change: transform;
+  backface-visibility: hidden;
+  image-rendering: auto;
+  user-select: none;
+  pointer-events: auto; /* ✅ allow hover */
+}
+
+/* ✅ NEW: small “movement” on hover */
+.ctaTruckInteractive{
+  transform-origin: 70% 60%;
+  transition: transform 260ms ease, filter 260ms ease;
+  filter: drop-shadow(0 14px 28px rgba(0,0,0,0.18));
+}
+
+.ctaTruckInteractive:hover{
+  transform: scaleX(var(--cta-truck-flip)) translateY(-6px) rotate(-1.5deg) scale(1.015);
+  filter: drop-shadow(0 18px 40px rgba(0,0,0,0.22));
+}
+
+/* ✅ NEW: a tiny wiggle while hovering (very subtle) */
+.ctaTruckInteractive:hover{
+  animation: ctaTruckWiggle 1.6s ease-in-out infinite;
+}
+
+@keyframes ctaTruckWiggle{
+  0%   { transform: scaleX(var(--cta-truck-flip)) translateY(-6px) rotate(-1.5deg) scale(1.015); }
+  35%  { transform: scaleX(var(--cta-truck-flip)) translateY(-7px) rotate(0.6deg)  scale(1.018); }
+  70%  { transform: scaleX(var(--cta-truck-flip)) translateY(-6px) rotate(-0.8deg) scale(1.016); }
+  100% { transform: scaleX(var(--cta-truck-flip)) translateY(-6px) rotate(-1.5deg) scale(1.015); }
+}
 
 /* ===== Social Buttons ===== */
 .socials { display:inline-flex; align-items:center; gap:8px; margin-left: 8px; }
@@ -267,18 +383,22 @@
 
 /* ===== Responsive ===== */
 @media (max-width: 1160px){ .tiltPhone{ width:320px; height:320px; } }
+
 @media (max-width: 1024px) {
-  .hero { grid-template-columns: 1fr; }
+  .hero-inner { grid-template-columns: 1fr; }
   .hero-right { max-width: 820px; justify-self: center; }
   .ctaBand{ grid-template-columns: 1fr; row-gap: 16px; text-align:center; }
   .ctaTruck{ justify-self: center; max-width: 520px; }
 }
+
 @media (max-width: 700px) { .qrBox { transform: scale(0.8); transform-origin: bottom center; } }
+
 @media (max-width: 900px) {
   .valueProps { grid-template-columns: 1fr; }
   .home-footer { grid-template-columns: 1fr; row-gap: 10px; text-align: center; }
   .footer-links { justify-content: center; }
   .shot-pair { grid-template-columns: 1fr; }
 }
+
 .hide-sm { display: inline; }
 @media (max-width: 600px) { .hide-sm { display: none; } }

@@ -199,6 +199,28 @@ const App = () => {
     <div style={styles.loginWrapper}>
       <div style={styles.bgOverlay} />
       <div style={styles.loginCard}>
+        {/* ✅ FORCE styles for placeholder + padding + autofill ONLY on this screen */}
+        <style>{`
+          .admin-login-input {
+            font-weight: 400 !important;
+            padding-left: 10px !important;   /* moves placeholder/text to the right */
+            padding-right: 6px !important;
+          }
+          .admin-login-input::placeholder {
+            font-weight: 400 !important;     /* not bold */
+            color: rgba(0,0,0,0.38) !important;
+            opacity: 1 !important;
+          }
+          /* Chrome autofill (can make things look bold/weird) */
+          .admin-login-input:-webkit-autofill,
+          .admin-login-input:-webkit-autofill:hover,
+          .admin-login-input:-webkit-autofill:focus {
+            -webkit-text-fill-color: #000 !important;
+            box-shadow: 0 0 0px 1000px #fff inset !important;
+            transition: background-color 9999s ease-out 0s;
+          }
+        `}</style>
+
         <img src="/icon.png" alt="logo" style={styles.loginLogo} />
         <p style={styles.tagline}>YOUR TRUSTED CAR RECOVERY SERVICE</p>
         <h2 style={styles.title}>Welcome to HILBU Admin</h2>
@@ -207,23 +229,27 @@ const App = () => {
         <div style={styles.passwordRow}>
           <Mail size={14} color="#999" style={{ marginRight: 8 }} />
           <input
+            className="admin-login-input"
             type="email"
             placeholder="Admin Email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             style={styles.inputNoIcon}
+            autoComplete="off"
           />
         </div>
 
         <div style={styles.passwordRow}>
           <Lock size={14} color="#999" style={{ marginRight: 8 }} />
           <input
+            className="admin-login-input"
             type="password"
             placeholder="Admin Password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             style={styles.inputNoIcon}
             onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
+            autoComplete="off"
           />
         </div>
 
@@ -481,13 +507,13 @@ const styles: Record<string, React.CSSProperties> = {
   inputNoIcon: {
     border: 'none',
     outline: 'none',
-    paddingLeft: 9,
-    fontSize: 12,
     flex: 1,
     fontFamily: 'Poppins, sans-serif',
-    padding: 0,
-    height: 20,
-    lineHeight: '20px',
+    fontSize: 12,
+    fontWeight: 400,
+    height: 5,
+    lineHeight: '18px',
+    backgroundColor: 'transparent',
   },
 
   // ✅ Smaller fields (email/password)

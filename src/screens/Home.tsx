@@ -1,3 +1,4 @@
+// Home.tsx
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import "./Home.css";
@@ -84,40 +85,53 @@ function StoreBadgeWithQR({
 }
 
 export default function Home() {
-  const IOS_URL =
-    "https://apps.apple.com/us/app/hilbu/id6751604180?platform=iphone";
-  const ANDROID_URL =
-    "https://play.google.com/store/apps/details?id=com.hilbu.recovery";
-
   return (
     <>
-      {/* ===== Hero ===== */}
-      <section className="hero section-gap">
-        <div className="hero-left">
-          <h1 className="hero-title">
-            Fast • Reliable • 24/7
-            <br className="hide-sm" /> Roadside Assistance
-          </h1>
-          <p className="hero-sub">
-            HILBU connects you instantly with professional recovery drivers near
-            you. Whether your car breaks down or needs towing — we’re always
-            there to help.
-          </p>
-
-          <div className="hero-ctaRow">
-            <Link to="/admin">
-              <button className="admin-button">🔐 Admin Login</button>
-            </Link>
-          </div>
+      {/* ===== Hero (Video Background) ===== */}
+      <section className="hero section-gap heroVideoHero">
+        {/* Background video */}
+        <div className="heroVideoBg" aria-hidden="true">
+          <video
+            className="heroVideo"
+            autoPlay
+            muted
+            loop
+            playsInline
+            preload="auto"
+          >
+            <source src="/home.mp4" type="video/mp4" />
+          </video>
+          <div className="heroVideoOverlay" />
         </div>
 
-        <div className="hero-right">
-          <div className="shot-pair">
-            <div className="shotFrame">
-              <img src="/1.png" alt="Get Started in Seconds" className="shot" />
+        {/* Content (keeps your layout, centered) */}
+        <div className="hero-inner">
+          <div className="hero-left">
+            <h1 className="hero-title">
+              Fast • Reliable • 24/7
+              <br className="hide-sm" /> Roadside Assistance
+            </h1>
+            <p className="hero-sub">
+              HILBU connects you instantly with professional recovery drivers
+              near you. Whether your car breaks down or needs towing — we’re
+              always there to help.
+            </p>
+
+            <div className="hero-ctaRow">
+              <Link to="/admin">
+                <button className="admin-button">🔐 Admin Login</button>
+              </Link>
             </div>
-            <div className="shotFrame">
-              <img src="/2.png" alt="Car Recovery in Seconds" className="shot" />
+          </div>
+
+          <div className="hero-right">
+            <div className="shot-pair">
+              <div className="shotFrame">
+                <img src="/1.png" alt="Get Started in Seconds" className="shot" />
+              </div>
+              <div className="shotFrame">
+                <img src="/2.png" alt="Car Recovery in Seconds" className="shot" />
+              </div>
             </div>
           </div>
         </div>
@@ -196,25 +210,34 @@ export default function Home() {
       <section className="ctaBand section-gap">
         <div className="ctaText">
           <h2>Ready When You Need Us</h2>
-          <p>Book a recovery in seconds. Track your driver live. Get a clear price upfront.</p>
+          <p>
+            Book a recovery in seconds. Track your driver live. Get a clear price upfront.
+          </p>
 
           <div className="ctaBadges">
             <StoreBadgeWithQR
               imgSrc="/appstore.png"
               alt="Download on the App Store"
-              href={IOS_URL}
+              href={"https://apps.apple.com/us/app/hilbu/id6751604180?platform=iphone"}
               label="iPhone"
             />
             <StoreBadgeWithQR
               imgSrc="/playstore.png"
               alt="Get it on Google Play"
-              href={ANDROID_URL}
+              href={"https://play.google.com/store/apps/details?id=com.hilbu.recovery"}
               label="Android"
             />
           </div>
         </div>
 
-        <img src="/hero-truck.png" alt="HILBU tow truck" className="ctaTruck" />
+        {/* ✅ PNG image (no SVG). Hover = small movement */}
+        <img
+          src="/cta-truck.png"
+          alt="HILBU tow truck"
+          className="ctaTruck ctaTruckInteractive"
+          loading="lazy"
+          draggable={false}
+        />
       </section>
     </>
   );
