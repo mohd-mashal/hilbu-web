@@ -1,5 +1,5 @@
 // Home.tsx
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import "./Home.css";
 
@@ -85,26 +85,81 @@ function StoreBadgeWithQR({
 }
 
 export default function Home() {
+  const heroRef = useRef<HTMLElement | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const [loadVideo, setLoadVideo] = useState(false);
+
+  const VIDEO_URL =
+    "https://res.cloudinary.com/dntrj62dw/video/upload/f_auto,q_auto,vc_auto/home_wdavvg.mp4";
+
+  useEffect(() => {
+    const el = heroRef.current;
+    if (!el) return;
+
+    if (!("IntersectionObserver" in window)) {
+      setLoadVideo(true);
+      return;
+    }
+
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          setLoadVideo(true);
+          io.disconnect();
+        }
+      },
+      {
+        threshold: 0.15,
+        rootMargin: "200px 0px",
+      }
+    );
+
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (!loadVideo) return;
+    const v = videoRef.current;
+    if (!v) return;
+
+    const tryPlay = async () => {
+      try {
+        await v.play();
+      } catch {}
+    };
+
+    const t = window.setTimeout(tryPlay, 50);
+    return () => window.clearTimeout(t);
+  }, [loadVideo]);
+
   return (
     <>
-      {/* ===== Hero (Video Background) ===== */}
-      <section className="hero section-gap heroVideoHero">
-        {/* Background video */}
+      <section
+        ref={(node) => {
+          heroRef.current = node;
+        }}
+        className="hero section-gap heroVideoHero"
+      >
         <div className="heroVideoBg" aria-hidden="true">
           <video
+            ref={(node) => {
+              videoRef.current = node;
+            }}
             className="heroVideo"
             autoPlay
             muted
             loop
             playsInline
-            preload="auto"
+            preload="metadata"
           >
-            <source src="https://res.cloudinary.com/dntrj62dw/video/upload/v1772483551/home_wdavvg.mp4" type="video/mp4" />
+            {loadVideo && (
+              <source src={VIDEO_URL} type="video/mp4" />
+            )}
           </video>
           <div className="heroVideoOverlay" />
         </div>
 
-        {/* Content (keeps your layout, centered) */}
         <div className="hero-inner">
           <div className="hero-left">
             <h1 className="hero-title">
@@ -169,7 +224,11 @@ export default function Home() {
           <div className="fs-right">
             <div className="tiltPhone">
               <div className="tiltCircle" />
-              <img src="/3.png" alt="Clear Trip Details" className="tiltImage" />
+              <img
+                src="/3.png"
+                alt="Clear Trip Details"
+                className="tiltImage"
+              />
             </div>
           </div>
         </div>
@@ -184,7 +243,11 @@ export default function Home() {
           <div className="fs-right">
             <div className="tiltPhone">
               <div className="tiltCircle" />
-              <img src="/4.png" alt="Track Your Driver Live" className="tiltImage" />
+              <img
+                src="/4.png"
+                alt="Track Your Driver Live"
+                className="tiltImage"
+              />
             </div>
           </div>
         </div>
@@ -200,7 +263,11 @@ export default function Home() {
           <div className="fs-right">
             <div className="tiltPhone">
               <div className="tiltCircle" />
-              <img src="/5.png" alt="Your Trips, Your Records" className="tiltImage" />
+              <img
+                src="/5.png"
+                alt="Your Trips, Your Records"
+                className="tiltImage"
+              />
             </div>
           </div>
         </div>
@@ -211,20 +278,25 @@ export default function Home() {
         <div className="ctaText">
           <h2>Ready When You Need Us</h2>
           <p>
-            Book a recovery in seconds. Track your driver live. Get a clear price upfront.
+            Book a recovery in seconds. Track your driver live. Get a clear
+            price upfront.
           </p>
 
           <div className="ctaBadges">
             <StoreBadgeWithQR
               imgSrc="/appstore.png"
               alt="Download on the App Store"
-              href={"https://apps.apple.com/us/app/hilbu/id6751604180?platform=iphone"}
+              href={
+                "https://apps.apple.com/us/app/hilbu/id6751604180?platform=iphone"
+              }
               label="iPhone"
             />
             <StoreBadgeWithQR
               imgSrc="/playstore.png"
               alt="Get it on Google Play"
-              href={"https://play.google.com/store/apps/details?id=com.hilbu.recovery"}
+              href={
+                "https://play.google.com/store/apps/details?id=com.hilbu.recovery"
+              }
               label="Android"
             />
           </div>
