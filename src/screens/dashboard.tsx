@@ -458,9 +458,10 @@ const styles: Record<string, React.CSSProperties> = {
   },
   cardRow: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))',
-    gap: 16,
+    gridTemplateColumns: 'repeat(5, minmax(0, 1fr))',
+    gap: 20,
     marginBottom: 32,
+    width: '100%',
   },
   card: {
     backgroundColor: '#FFDC00',
@@ -468,11 +469,12 @@ const styles: Record<string, React.CSSProperties> = {
     padding: 18,
     cursor: 'pointer',
     boxShadow: '0 4px 10px rgba(0,0,0,0.12)',
-    minHeight: 130,
+    minHeight: 150,
     display: 'flex',
     flexDirection: 'column',
     justifyContent: 'center',
     border: '1px solid rgba(0,0,0,0.08)',
+    minWidth: 0,
   },
   cardLabel: {
     fontSize: 15,
@@ -493,9 +495,10 @@ const styles: Record<string, React.CSSProperties> = {
   },
   summaryRow: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-    gap: 14,
+    gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+    gap: 20,
     marginBottom: 32,
+    width: '100%',
   },
   smallCard: {
     backgroundColor: '#000',
