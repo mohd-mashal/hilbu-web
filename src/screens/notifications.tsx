@@ -8,7 +8,7 @@ import { getFirebaseDB } from '../firebaseConfig';
 type TargetScope = 'all' | 'users' | 'drivers';
 
 const FUNCTIONS_REGION =
-  (import.meta as any)?.env?.VITE_FIREBASE_FUNCTIONS_REGION || 'us-central1';
+  (import.meta as any)?.env?.VITE_FIREBASE_FUNCTIONS_REGION || 'asia-south1';
 
 // Expo token helper
 const isExpoToken = (t: unknown) =>
@@ -92,10 +92,18 @@ export default function AdminNotifications() {
 
     try {
       setSending(true);
-      const tokens = await collectTokens(target);
-      setFoundCount(tokens.length);
+      const tokenGroups =
+        target === 'all'
+          ? [
+              { scope: 'users' as const, tokens: await collectTokens('users') },
+              { scope: 'drivers' as const, tokens: await collectTokens('drivers') },
+            ]
+          : [{ scope: target, tokens: await collectTokens(target) }];
 
-      if (tokens.length === 0) {
+      const totalTokens = tokenGroups.reduce((sum, group) => sum + group.tokens.length, 0);
+      setFoundCount(totalTokens);
+
+      if (totalTokens === 0) {
         alert('No registered devices to send to.');
         setSending(false);
         return;
@@ -106,19 +114,21 @@ export default function AdminNotifications() {
       const functions = getFunctions(app, FUNCTIONS_REGION);
       const sendExpoPush = httpsCallable(functions, 'sendExpoPush');
 
-      // Batch into chunks (<= 90 keeps us safe)
+      // Keep user-app and driver-app Expo tokens in separate requests.
       const chunkSize = 90;
-      for (let i = 0; i < tokens.length; i += chunkSize) {
-        const chunk = tokens.slice(i, i + chunkSize);
-        // Minimal data payload for inbox/tap handling
-        await sendExpoPush({
-          tokens: chunk,
-          title: 'HILBU',
-          body: message,
-          data: { scope: target },
-          channelId: 'default',
-          priority: 'high',
-        });
+      for (const group of tokenGroups) {
+        for (let i = 0; i < group.tokens.length; i += chunkSize) {
+          const chunk = group.tokens.slice(i, i + chunkSize);
+          // Minimal data payload for inbox/tap handling
+          await sendExpoPush({
+            tokens: chunk,
+            title: 'HILBU',
+            body: message,
+            data: { scope: group.scope },
+            channelId: 'default',
+            priority: 'high',
+          });
+        }
       }
 
       setMessage('');
