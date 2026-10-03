@@ -110,7 +110,7 @@ ${message}
   try {
     const resend = new Resend(apiKey);
 
-    await resend.emails.send({
+    const { data, error } = await resend.emails.send({
       from: "HILBU Contact <onboarding@resend.dev>",
       to: [to],
       replyTo: email,
@@ -118,7 +118,15 @@ ${message}
       text,
     });
 
-    return json(res, 200, { ok: true });
+    if (error) {
+      console.error("RESEND ERROR:", error);
+      return json(res, 500, {
+        ok: false,
+        error: error.message || "Email sending failed",
+      });
+    }
+
+    return json(res, 200, { ok: true, id: data?.id || null });
   } catch (e) {
     console.error("RESEND ERROR:", e);
     return json(res, 500, { ok: false, error: "Email sending failed" });
