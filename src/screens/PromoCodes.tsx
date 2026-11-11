@@ -1,9 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
+
 import {
   collection,
   addDoc,
   updateDoc,
   deleteDoc,
+  deleteField,
   doc,
   onSnapshot,
   query,
@@ -12,20 +14,21 @@ import {
   Timestamp,
   limit,
 } from 'firebase/firestore';
+
 import { firestore } from '../firebaseConfig';
 
 type PromoType = 'percent' | 'flat';
 
 type PromoCode = {
   id?: string;
-  code: string; // stored uppercase
+  code: string;
   active: boolean;
   type: PromoType;
-  percentOff?: number; // 0-100
-  amountOff?: number; // AED
+  percentOff?: number;
+  amountOff?: number;
   expiresAt?: Timestamp | null;
   maxRedemptions?: number;
-  timesRedeemed?: number; // display-only
+  timesRedeemed?: number;
   perUserLimit?: number;
   minSubtotal?: number;
   createdAt?: Timestamp;
@@ -45,12 +48,14 @@ const theme = {
 
 const inputBase =
   'w-full h-11 px-3 rounded-lg border outline-none text-[14px] transition-all';
+
 const pill =
   'inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-[12px] font-semibold';
 
-// ⬇️ helper to strip undefined (Firestore rejects undefined values)
 const cleanObject = (obj: Record<string, any>) =>
-  Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined));
+  Object.fromEntries(
+    Object.entries(obj).filter(([, value]) => value !== undefined)
+  );
 
 export default function PromoCodes() {
   const [items, setItems] = useState<PromoCode[]>([]);
@@ -66,19 +71,39 @@ export default function PromoCodes() {
       orderBy('createdAt', 'desc'),
       limit(200)
     );
-    const unsub = onSnapshot(qy, (snap) => {
-      const rows: PromoCode[] = [];
-      snap.forEach((d) => rows.push({ id: d.id, ...(d.data() as any) }));
-      setItems(rows);
-      setLoading(false);
-    });
+
+    const unsub = onSnapshot(
+      qy,
+      (snap) => {
+        const rows: PromoCode[] = [];
+
+        snap.forEach((d) =>
+          rows.push({
+            id: d.id,
+            ...(d.data() as any),
+          })
+        );
+
+        setItems(rows);
+        setLoading(false);
+      },
+      (error) => {
+        console.error('Promo codes listener error:', error);
+        setLoading(false);
+      }
+    );
+
     return () => unsub();
   }, []);
 
   const filtered = useMemo(() => {
     const q = search.trim().toUpperCase();
+
     if (!q) return items;
-    return items.filter((i) => i.code?.toUpperCase().includes(q));
+
+    return items.filter((item) =>
+      item.code?.toUpperCase().includes(q)
+    );
   }, [items, search]);
 
   const startCreate = () => {
@@ -94,6 +119,7 @@ export default function PromoCodes() {
       minSubtotal: undefined,
       expiresAt: undefined,
     });
+
     setShowForm(true);
   };
 
@@ -103,94 +129,261 @@ export default function PromoCodes() {
   };
 
   const closeForm = () => {
+    if (saving) return;
+
     setEditing(null);
     setShowForm(false);
   };
 
   const toDateInput = (ts?: Timestamp | null) => {
     if (!ts) return '';
-    const d = ts.toDate();
-    const yyyy = d.getFullYear();
-    const mm = String(d.getMonth() + 1).padStart(2, '0');
-    const dd = String(d.getDate()).padStart(2, '0');
-    return `${yyyy}-${mm}-${dd}`;
+
+    try {
+      const d = ts.toDate();
+
+      const yyyy = d.getFullYear();
+      const mm = String(d.getMonth() + 1).padStart(2, '0');
+      const dd = String(d.getDate()).padStart(2, '0');
+
+      return `${yyyy}-${mm}-${dd}`;
+    } catch {
+      return '';
+    }
   };
 
-  const fromDateInput = (v: string) => {
-    if (!v) return undefined; // keep undefined so we can strip it
-    const d = new Date(v + 'T23:59:59');
-    if (isNaN(d.getTime())) return undefined;
+  const fromDateInput = (value: string) => {
+    if (!value) return undefined;
+
+    const d = new Date(`${value}T23:59:59`);
+
+    if (isNaN(d.getTime())) {
+      return undefined;
+    }
+
     return Timestamp.fromDate(d);
   };
 
-  const up = (patch: Partial<PromoCode>) =>
-    setEditing((prev) => (prev ? { ...prev, ...patch } : prev));
+  const up = (patch: Partial<PromoCode>) => {
+    setEditing((prev) =>
+      prev
+        ? {
+            ...prev,
+            ...patch,
+          }
+        : prev
+    );
+  };
 
   const save = async () => {
-    if (!editing) return;
+    if (!editing || saving) return;
+
     const e = editing;
 
-    // normalize
     const code = (e.code || '').trim().toUpperCase();
+
     if (!code) {
       alert('Enter code');
       return;
     }
 
-    // exclusive fields
-    let percentOff: number | undefined = undefined;
-    let amountOff: number | undefined = undefined;
+    // Prevent duplicate promo codes.
+    const duplicate = items.some(
+      (item) =>
+        item.id !== e.id &&
+        String(item.code || '').trim().toUpperCase() === code
+    );
+
+    if (duplicate) {
+      alert(`Promo code "${code}" already exists.`);
+      return;
+    }
+
+    let percentOff: number | undefined;
+    let amountOff: number | undefined;
 
     if (e.type === 'percent') {
-      const p = Number(e.percentOff ?? 0);
-      if (!(p > 0 && p <= 100)) {
+      const value = Number(e.percentOff ?? 0);
+
+      if (!(value > 0 && value <= 100)) {
         alert('Percent must be between 1 and 100');
         return;
       }
-      percentOff = Math.round(p * 100) / 100;
+
+      percentOff = Math.round(value * 100) / 100;
     } else {
-      const a = Number(e.amountOff ?? 0);
-      if (!(a > 0)) {
-        alert('Amount must be > 0');
+      const value = Number(e.amountOff ?? 0);
+
+      if (!(value > 0)) {
+        alert('Amount must be greater than 0');
         return;
       }
-      amountOff = Math.round(a * 100) / 100;
+
+      amountOff = Math.round(value * 100) / 100;
     }
 
-    const payload = cleanObject({
-      code,
-      active: !!e.active,
-      type: e.type,
-      percentOff,
-      amountOff,
-      expiresAt: e.expiresAt ?? undefined,
-      maxRedemptions:
-        e.maxRedemptions !== ('' as any) && e.maxRedemptions !== null && e.maxRedemptions !== undefined
-          ? Number(e.maxRedemptions)
-          : undefined,
-      perUserLimit:
-        e.perUserLimit !== ('' as any) && e.perUserLimit !== null && e.perUserLimit !== undefined
-          ? Number(e.perUserLimit)
-          : undefined,
-      minSubtotal:
-        e.minSubtotal !== ('' as any) && e.minSubtotal !== null && e.minSubtotal !== undefined
-          ? Math.round(Number(e.minSubtotal) * 100) / 100
-          : undefined,
-      updatedAt: serverTimestamp(),
-    });
+    let maxRedemptions: number | undefined;
+
+    if (
+      e.maxRedemptions !== ('' as any) &&
+      e.maxRedemptions !== null &&
+      e.maxRedemptions !== undefined
+    ) {
+      maxRedemptions = Number(e.maxRedemptions);
+
+      if (
+        !Number.isFinite(maxRedemptions) ||
+        maxRedemptions < 1
+      ) {
+        alert('Max Redemptions must be at least 1');
+        return;
+      }
+
+      if (
+        maxRedemptions <
+        Number(e.timesRedeemed ?? 0)
+      ) {
+        alert(
+          `Max Redemptions cannot be lower than Times Redeemed (${Number(
+            e.timesRedeemed ?? 0
+          )}).`
+        );
+        return;
+      }
+    }
+
+    let perUserLimit: number | undefined;
+
+    if (
+      e.perUserLimit !== ('' as any) &&
+      e.perUserLimit !== null &&
+      e.perUserLimit !== undefined
+    ) {
+      perUserLimit = Number(e.perUserLimit);
+
+      if (
+        !Number.isFinite(perUserLimit) ||
+        perUserLimit < 1
+      ) {
+        alert('Per-User Limit must be at least 1');
+        return;
+      }
+    }
+
+    let minSubtotal: number | undefined;
+
+    if (
+      e.minSubtotal !== ('' as any) &&
+      e.minSubtotal !== null &&
+      e.minSubtotal !== undefined
+    ) {
+      minSubtotal =
+        Math.round(Number(e.minSubtotal) * 100) / 100;
+
+      if (
+        !Number.isFinite(minSubtotal) ||
+        minSubtotal < 0
+      ) {
+        alert('Min Subtotal cannot be negative');
+        return;
+      }
+    }
 
     setSaving(true);
+
     try {
       if (e.id) {
-        await updateDoc(doc(firestore, 'promo_codes', e.id), payload);
+        /*
+         * For edits we explicitly delete fields that the Admin cleared.
+         * We also delete the discount field that no longer belongs
+         * to the selected promo type.
+         */
+        const updatePayload: Record<string, any> = {
+          code,
+          active: !!e.active,
+          type: e.type,
+
+          percentOff:
+            e.type === 'percent'
+              ? percentOff
+              : deleteField(),
+
+          amountOff:
+            e.type === 'flat'
+              ? amountOff
+              : deleteField(),
+
+          expiresAt:
+            e.expiresAt !== undefined &&
+            e.expiresAt !== null
+              ? e.expiresAt
+              : deleteField(),
+
+          maxRedemptions:
+            maxRedemptions !== undefined
+              ? maxRedemptions
+              : deleteField(),
+
+          perUserLimit:
+            perUserLimit !== undefined
+              ? perUserLimit
+              : deleteField(),
+
+          minSubtotal:
+            minSubtotal !== undefined
+              ? minSubtotal
+              : deleteField(),
+
+          updatedAt: serverTimestamp(),
+        };
+
+        await updateDoc(
+          doc(firestore, 'promo_codes', e.id),
+          updatePayload
+        );
       } else {
-        await addDoc(collection(firestore, 'promo_codes'), {
-          ...payload,
+        /*
+         * For a new promo we simply omit optional fields that
+         * have not been entered.
+         */
+        const createPayload = cleanObject({
+          code,
+          active: !!e.active,
+          type: e.type,
+
+          percentOff:
+            e.type === 'percent'
+              ? percentOff
+              : undefined,
+
+          amountOff:
+            e.type === 'flat'
+              ? amountOff
+              : undefined,
+
+          expiresAt:
+            e.expiresAt ?? undefined,
+
+          maxRedemptions,
+
+          perUserLimit,
+
+          minSubtotal,
+
           timesRedeemed: 0,
+
           createdAt: serverTimestamp(),
+
+          updatedAt: serverTimestamp(),
         });
+
+        await addDoc(
+          collection(firestore, 'promo_codes'),
+          createPayload
+        );
       }
-      closeForm();
+
+      setEditing(null);
+      setShowForm(false);
     } catch (err: any) {
       console.error('Save promo error:', err);
       alert(err?.message || 'Failed to save promo code.');
@@ -201,28 +394,45 @@ export default function PromoCodes() {
 
   const remove = async (row: PromoCode) => {
     if (!row.id) return;
-    if (!confirm(`Delete code "${row.code}"?`)) return;
+
+    if (!confirm(`Delete code "${row.code}"?`)) {
+      return;
+    }
+
     try {
-      await deleteDoc(doc(firestore, 'promo_codes', row.id));
+      await deleteDoc(
+        doc(firestore, 'promo_codes', row.id)
+      );
     } catch (err: any) {
+      console.error('Delete promo error:', err);
       alert(err?.message || 'Failed to delete code.');
     }
   };
 
   const toggleActive = async (row: PromoCode) => {
     if (!row.id) return;
+
     try {
-      await updateDoc(doc(firestore, 'promo_codes', row.id), {
-        active: !row.active,
-        updatedAt: serverTimestamp(),
-      });
+      await updateDoc(
+        doc(firestore, 'promo_codes', row.id),
+        {
+          active: !row.active,
+          updatedAt: serverTimestamp(),
+        }
+      );
     } catch (err: any) {
+      console.error('Toggle promo error:', err);
       alert(err?.message || 'Failed to update status.');
     }
   };
 
   return (
-    <div style={{ minHeight: '100vh', background: theme.bg }}>
+    <div
+      style={{
+        minHeight: '100vh',
+        background: theme.bg,
+      }}
+    >
       <div
         style={{
           maxWidth: 1100,
@@ -238,6 +448,7 @@ export default function PromoCodes() {
             alignItems: 'center',
             justifyContent: 'space-between',
             marginBottom: 16,
+            flexWrap: 'wrap',
           }}
         >
           <div>
@@ -252,6 +463,7 @@ export default function PromoCodes() {
             >
               Promo Codes
             </h1>
+
             <p
               style={{
                 margin: '6px 0 0',
@@ -259,11 +471,19 @@ export default function PromoCodes() {
                 fontSize: 13,
               }}
             >
-              Create and manage discount codes (AED). Uppercase codes are enforced automatically.
+              Create and manage discount codes (AED). Uppercase codes are
+              enforced automatically.
             </p>
           </div>
 
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          <div
+            style={{
+              display: 'flex',
+              gap: 10,
+              alignItems: 'center',
+              flexWrap: 'wrap',
+            }}
+          >
             <input
               placeholder="Search code…"
               value={search}
@@ -271,10 +491,12 @@ export default function PromoCodes() {
               className={inputBase}
               style={{
                 width: 240,
+                maxWidth: '100%',
                 borderColor: theme.border,
                 background: '#fff',
               }}
             />
+
             <button
               onClick={startCreate}
               style={{
@@ -299,159 +521,227 @@ export default function PromoCodes() {
             background: '#fff',
             border: `1px solid ${theme.border}`,
             borderRadius: 16,
-            overflow: 'hidden',
+            overflowX: 'auto',
+            overflowY: 'hidden',
             boxShadow: '0 6px 24px rgba(0,0,0,0.06)',
           }}
         >
-          {/* Table header */}
           <div
             style={{
-              display: 'grid',
-              gridTemplateColumns: '160px 110px 140px 160px 160px 140px 120px 120px',
-              gap: 10,
-              padding: '12px 14px',
-              fontSize: 12,
-              fontWeight: 700,
-              color: theme.muted,
-              background: '#fafafa',
-              borderBottom: `1px solid ${theme.border}`,
+              minWidth: 1190,
             }}
           >
-            <div>Code</div>
-            <div>Status</div>
-            <div>Type</div>
-            <div>Discount</div>
-            <div>Expires</div>
-            <div>Usage</div>
-            <div>Per-User</div>
-            <div>Min Subtotal</div>
-          </div>
+            {/* Table header */}
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns:
+                  '160px 110px 140px 160px 160px 140px 120px 120px',
+                gap: 10,
+                padding: '12px 14px',
+                fontSize: 12,
+                fontWeight: 700,
+                color: theme.muted,
+                background: '#fafafa',
+                borderBottom: `1px solid ${theme.border}`,
+              }}
+            >
+              <div>Code</div>
+              <div>Status</div>
+              <div>Type</div>
+              <div>Discount</div>
+              <div>Expires</div>
+              <div>Usage</div>
+              <div>Per-User</div>
+              <div>Min Subtotal</div>
+            </div>
 
-          {/* Rows */}
-          <div>
-            {loading ? (
-              <div style={{ padding: 18, color: theme.muted }}>Loading…</div>
-            ) : filtered.length === 0 ? (
-              <div style={{ padding: 18, color: theme.muted }}>No promo codes found.</div>
-            ) : (
-              filtered.map((row) => (
+            {/* Rows */}
+            <div>
+              {loading ? (
                 <div
-                  key={row.id}
                   style={{
-                    display: 'grid',
-                    gridTemplateColumns:
-                      '160px 110px 140px 160px 160px 140px 120px 120px',
-                    gap: 10,
-                    padding: '14px 14px',
-                    borderBottom: `1px solid ${theme.border}`,
-                    alignItems: 'center',
+                    padding: 18,
+                    color: theme.muted,
                   }}
                 >
-                  <div style={{ fontWeight: 800, color: theme.text }}>{row.code}</div>
-
-                  <div>
-                    <span
-                      className={pill}
-                      style={{
-                        background: row.active ? 'rgba(11,143,0,0.12)' : 'rgba(176,0,32,0.12)',
-                        color: row.active ? theme.green : theme.red,
-                        border: `1px solid ${row.active ? 'rgba(11,143,0,0.35)' : 'rgba(176,0,32,0.35)'}`,
-                      }}
-                    >
-                      ● {row.active ? 'Active' : 'Inactive'}
-                    </span>
-                  </div>
-
-                  <div style={{ color: theme.text, fontWeight: 600 }}>
-                    {row.type === 'percent' ? 'Percent' : 'Flat'}
-                  </div>
-
-                  <div style={{ color: theme.text }}>
-                    {row.type === 'percent'
-                      ? `${Number(row.percentOff ?? 0).toFixed(2)}%`
-                      : `AED ${Number(row.amountOff ?? 0).toFixed(2)}`}
-                  </div>
-
-                  <div style={{ color: theme.text }}>
-                    {row.expiresAt
-                      ? row.expiresAt.toDate().toLocaleDateString()
-                      : '—'}
-                  </div>
-
-                  <div style={{ color: theme.text }}>
-                    {Number(row.timesRedeemed ?? 0)} /{' '}
-                    {row.maxRedemptions ?? '∞'}
-                  </div>
-
-                  <div style={{ color: theme.text }}>
-                    {row.perUserLimit ?? '—'}
-                  </div>
-
-                  <div style={{ color: theme.text }}>
-                    {row.minSubtotal !== undefined
-                      ? `AED ${Number(row.minSubtotal).toFixed(2)}`
-                      : '—'}
-                  </div>
-
-                  {/* Row actions */}
+                  Loading…
+                </div>
+              ) : filtered.length === 0 ? (
+                <div
+                  style={{
+                    padding: 18,
+                    color: theme.muted,
+                  }}
+                >
+                  No promo codes found.
+                </div>
+              ) : (
+                filtered.map((row) => (
                   <div
+                    key={row.id}
                     style={{
-                      gridColumn: '1 / -1',
-                      display: 'flex',
-                      gap: 8,
-                      paddingTop: 8,
+                      display: 'grid',
+                      gridTemplateColumns:
+                        '160px 110px 140px 160px 160px 140px 120px 120px',
+                      gap: 10,
+                      padding: '14px 14px',
+                      borderBottom: `1px solid ${theme.border}`,
+                      alignItems: 'center',
                     }}
                   >
-                    <button
-                      onClick={() => toggleActive(row)}
+                    <div
                       style={{
-                        height: 36,
-                        padding: '0 12px',
-                        borderRadius: 10,
-                        border: `1.5px solid ${theme.black}`,
-                        background: '#fff',
-                        color: theme.black,
                         fontWeight: 800,
-                        cursor: 'pointer',
+                        color: theme.text,
                       }}
                     >
-                      {row.active ? 'Deactivate' : 'Activate'}
-                    </button>
-                    <button
-                      onClick={() => startEdit(row)}
+                      {row.code}
+                    </div>
+
+                    <div>
+                      <span
+                        className={pill}
+                        style={{
+                          background: row.active
+                            ? 'rgba(11,143,0,0.12)'
+                            : 'rgba(176,0,32,0.12)',
+
+                          color: row.active
+                            ? theme.green
+                            : theme.red,
+
+                          border: `1px solid ${
+                            row.active
+                              ? 'rgba(11,143,0,0.35)'
+                              : 'rgba(176,0,32,0.35)'
+                          }`,
+                        }}
+                      >
+                        ● {row.active ? 'Active' : 'Inactive'}
+                      </span>
+                    </div>
+
+                    <div
                       style={{
-                        height: 36,
-                        padding: '0 12px',
-                        borderRadius: 10,
-                        border: `1.5px solid ${theme.black}`,
-                        background: theme.primary,
-                        color: theme.black,
-                        fontWeight: 800,
-                        cursor: 'pointer',
+                        color: theme.text,
+                        fontWeight: 600,
                       }}
                     >
-                      Edit
-                    </button>
-                    <button
-                      onClick={() => remove(row)}
+                      {row.type === 'percent'
+                        ? 'Percent'
+                        : 'Flat'}
+                    </div>
+
+                    <div
                       style={{
-                        height: 36,
-                        padding: '0 12px',
-                        borderRadius: 10,
-                        border: `1.5px solid ${theme.red}`,
-                        background: '#fff',
-                        color: theme.red,
-                        fontWeight: 800,
-                        marginLeft: 'auto',
-                        cursor: 'pointer',
+                        color: theme.text,
                       }}
                     >
-                      Delete
-                    </button>
+                      {row.type === 'percent'
+                        ? `${Number(row.percentOff ?? 0).toFixed(2)}%`
+                        : `AED ${Number(row.amountOff ?? 0).toFixed(2)}`}
+                    </div>
+
+                    <div
+                      style={{
+                        color: theme.text,
+                      }}
+                    >
+                      {row.expiresAt
+                        ? row.expiresAt.toDate().toLocaleDateString()
+                        : '—'}
+                    </div>
+
+                    <div
+                      style={{
+                        color: theme.text,
+                      }}
+                    >
+                      {Number(row.timesRedeemed ?? 0)} /{' '}
+                      {row.maxRedemptions ?? '∞'}
+                    </div>
+
+                    <div
+                      style={{
+                        color: theme.text,
+                      }}
+                    >
+                      {row.perUserLimit ?? '—'}
+                    </div>
+
+                    <div
+                      style={{
+                        color: theme.text,
+                      }}
+                    >
+                      {row.minSubtotal !== undefined
+                        ? `AED ${Number(row.minSubtotal).toFixed(2)}`
+                        : '—'}
+                    </div>
+
+                    {/* Row actions */}
+                    <div
+                      style={{
+                        gridColumn: '1 / -1',
+                        display: 'flex',
+                        gap: 8,
+                        paddingTop: 8,
+                      }}
+                    >
+                      <button
+                        onClick={() => toggleActive(row)}
+                        style={{
+                          height: 36,
+                          padding: '0 12px',
+                          borderRadius: 10,
+                          border: `1.5px solid ${theme.black}`,
+                          background: '#fff',
+                          color: theme.black,
+                          fontWeight: 800,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        {row.active ? 'Deactivate' : 'Activate'}
+                      </button>
+
+                      <button
+                        onClick={() => startEdit(row)}
+                        style={{
+                          height: 36,
+                          padding: '0 12px',
+                          borderRadius: 10,
+                          border: `1.5px solid ${theme.black}`,
+                          background: theme.primary,
+                          color: theme.black,
+                          fontWeight: 800,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        Edit
+                      </button>
+
+                      <button
+                        onClick={() => remove(row)}
+                        style={{
+                          height: 36,
+                          padding: '0 12px',
+                          borderRadius: 10,
+                          border: `1.5px solid ${theme.red}`,
+                          background: '#fff',
+                          color: theme.red,
+                          fontWeight: 800,
+                          marginLeft: 'auto',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        Delete
+                      </button>
+                    </div>
                   </div>
-                </div>
-              ))
-            )}
+                ))
+              )}
+            </div>
           </div>
         </div>
 
@@ -465,6 +755,8 @@ export default function PromoCodes() {
               display: 'grid',
               placeItems: 'center',
               zIndex: 50,
+              padding: 12,
+              overflowY: 'auto',
             }}
             onClick={closeForm}
           >
@@ -472,11 +764,12 @@ export default function PromoCodes() {
               onClick={(e) => e.stopPropagation()}
               style={{
                 width: 'min(760px, 96vw)',
+                maxHeight: '94vh',
                 background: '#fff',
                 borderRadius: 18,
                 border: `1px solid ${theme.border}`,
                 boxShadow: '0 12px 30px rgba(0,0,0,0.16)',
-                overflow: 'hidden',
+                overflowY: 'auto',
               }}
             >
               <div
@@ -487,13 +780,26 @@ export default function PromoCodes() {
                   padding: '12px 16px',
                   borderBottom: `1px solid ${theme.border}`,
                   background: '#fafafa',
+                  position: 'sticky',
+                  top: 0,
+                  zIndex: 2,
                 }}
               >
-                <div style={{ fontSize: 16, fontWeight: 800, color: theme.text }}>
-                  {editing.id ? 'Edit Promo Code' : 'New Promo Code'}
+                <div
+                  style={{
+                    fontSize: 16,
+                    fontWeight: 800,
+                    color: theme.text,
+                  }}
+                >
+                  {editing.id
+                    ? 'Edit Promo Code'
+                    : 'New Promo Code'}
                 </div>
+
                 <button
                   onClick={closeForm}
+                  disabled={saving}
                   style={{
                     height: 36,
                     padding: '0 12px',
@@ -502,45 +808,85 @@ export default function PromoCodes() {
                     background: '#fff',
                     color: theme.black,
                     fontWeight: 800,
-                    cursor: 'pointer',
+                    cursor: saving ? 'not-allowed' : 'pointer',
+                    opacity: saving ? 0.6 : 1,
                   }}
                 >
                   Close
                 </button>
               </div>
 
-              <div style={{ padding: 16, display: 'grid', gap: 12 }}>
+              <div
+                style={{
+                  padding: 16,
+                  display: 'grid',
+                  gap: 12,
+                }}
+              >
                 {/* Row 1 */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 180px 180px', gap: 12 }}>
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'minmax(0, 1fr) 180px 180px',
+                    gap: 12,
+                  }}
+                >
                   <div>
                     <label style={labelStyle}>Code</label>
+
                     <input
                       className={inputBase}
-                      style={{ borderColor: theme.border, background: '#fff', textTransform: 'uppercase' }}
+                      style={{
+                        borderColor: theme.border,
+                        background: '#fff',
+                        textTransform: 'uppercase',
+                      }}
                       placeholder="E.g. WELCOME10"
                       value={editing.code}
-                      onChange={(e) => up({ code: e.target.value.toUpperCase() })}
+                      onChange={(e) =>
+                        up({
+                          code: e.target.value.toUpperCase(),
+                        })
+                      }
                     />
                   </div>
+
                   <div>
                     <label style={labelStyle}>Status</label>
+
                     <select
                       className={inputBase}
-                      style={{ borderColor: theme.border, background: '#fff' }}
+                      style={{
+                        borderColor: theme.border,
+                        background: '#fff',
+                      }}
                       value={editing.active ? '1' : '0'}
-                      onChange={(e) => up({ active: e.target.value === '1' })}
+                      onChange={(e) =>
+                        up({
+                          active: e.target.value === '1',
+                        })
+                      }
                     >
                       <option value="1">Active</option>
                       <option value="0">Inactive</option>
                     </select>
                   </div>
+
                   <div>
                     <label style={labelStyle}>Type</label>
+
                     <select
                       className={inputBase}
-                      style={{ borderColor: theme.border, background: '#fff' }}
+                      style={{
+                        borderColor: theme.border,
+                        background: '#fff',
+                      }}
                       value={editing.type}
-                      onChange={(e) => up({ type: e.target.value as PromoType })}
+                      onChange={(e) =>
+                        up({
+                          type: e.target.value as PromoType,
+                        })
+                      }
                     >
                       <option value="percent">Percent</option>
                       <option value="flat">Flat (AED)</option>
@@ -549,17 +895,36 @@ export default function PromoCodes() {
                 </div>
 
                 {/* Row 2 */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: '1fr 1fr 1fr',
+                    gap: 12,
+                  }}
+                >
                   {editing.type === 'percent' ? (
                     <div>
-                      <label style={labelStyle}>Percent Off (0–100)</label>
+                      <label style={labelStyle}>
+                        Percent Off (1–100)
+                      </label>
+
                       <input
                         type="number"
                         className={inputBase}
-                        style={{ borderColor: theme.border, background: '#fff' }}
+                        style={{
+                          borderColor: theme.border,
+                          background: '#fff',
+                        }}
                         value={editing.percentOff ?? ''}
-                        onChange={(e) => up({ percentOff: Number(e.target.value) })}
-                        min={0}
+                        onChange={(e) =>
+                          up({
+                            percentOff:
+                              e.target.value === ''
+                                ? undefined
+                                : Number(e.target.value),
+                          })
+                        }
+                        min={1}
                         max={100}
                         step={0.01}
                         placeholder="10"
@@ -567,14 +932,27 @@ export default function PromoCodes() {
                     </div>
                   ) : (
                     <div>
-                      <label style={labelStyle}>Amount Off (AED)</label>
+                      <label style={labelStyle}>
+                        Amount Off (AED)
+                      </label>
+
                       <input
                         type="number"
                         className={inputBase}
-                        style={{ borderColor: theme.border, background: '#fff' }}
+                        style={{
+                          borderColor: theme.border,
+                          background: '#fff',
+                        }}
                         value={editing.amountOff ?? ''}
-                        onChange={(e) => up({ amountOff: Number(e.target.value) })}
-                        min={0}
+                        onChange={(e) =>
+                          up({
+                            amountOff:
+                              e.target.value === ''
+                                ? undefined
+                                : Number(e.target.value),
+                          })
+                        }
+                        min={0.01}
                         step={0.01}
                         placeholder="25"
                       />
@@ -582,55 +960,87 @@ export default function PromoCodes() {
                   )}
 
                   <div>
-                    <label style={labelStyle}>Max Redemptions (optional)</label>
+                    <label style={labelStyle}>
+                      Max Redemptions (optional)
+                    </label>
+
                     <input
                       type="number"
                       className={inputBase}
-                      style={{ borderColor: theme.border, background: '#fff' }}
+                      style={{
+                        borderColor: theme.border,
+                        background: '#fff',
+                      }}
                       value={editing.maxRedemptions ?? ''}
                       onChange={(e) =>
                         up({
                           maxRedemptions:
-                            e.target.value === '' ? undefined : Number(e.target.value),
+                            e.target.value === ''
+                              ? undefined
+                              : Number(e.target.value),
                         })
                       }
-                      min={0}
+                      min={1}
+                      step={1}
                       placeholder="e.g. 100"
                     />
                   </div>
 
                   <div>
-                    <label style={labelStyle}>Per-User Limit (optional)</label>
+                    <label style={labelStyle}>
+                      Per-User Limit (optional)
+                    </label>
+
                     <input
                       type="number"
                       className={inputBase}
-                      style={{ borderColor: theme.border, background: '#fff' }}
+                      style={{
+                        borderColor: theme.border,
+                        background: '#fff',
+                      }}
                       value={editing.perUserLimit ?? ''}
                       onChange={(e) =>
                         up({
                           perUserLimit:
-                            e.target.value === '' ? undefined : Number(e.target.value),
+                            e.target.value === ''
+                              ? undefined
+                              : Number(e.target.value),
                         })
                       }
                       min={1}
+                      step={1}
                       placeholder="e.g. 1"
                     />
                   </div>
                 </div>
 
                 {/* Row 3 */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: '1fr 1fr 1fr',
+                    gap: 12,
+                  }}
+                >
                   <div>
-                    <label style={labelStyle}>Min Subtotal (AED, optional)</label>
+                    <label style={labelStyle}>
+                      Min Subtotal (AED, optional)
+                    </label>
+
                     <input
                       type="number"
                       className={inputBase}
-                      style={{ borderColor: theme.border, background: '#fff' }}
+                      style={{
+                        borderColor: theme.border,
+                        background: '#fff',
+                      }}
                       value={editing.minSubtotal ?? ''}
                       onChange={(e) =>
                         up({
                           minSubtotal:
-                            e.target.value === '' ? undefined : Number(e.target.value),
+                            e.target.value === ''
+                              ? undefined
+                              : Number(e.target.value),
                         })
                       }
                       min={0}
@@ -640,22 +1050,37 @@ export default function PromoCodes() {
                   </div>
 
                   <div>
-                    <label style={labelStyle}>Expires On (optional)</label>
+                    <label style={labelStyle}>
+                      Expires On (optional)
+                    </label>
+
                     <input
                       type="date"
                       className={inputBase}
-                      style={{ borderColor: theme.border, background: '#fff' }}
+                      style={{
+                        borderColor: theme.border,
+                        background: '#fff',
+                      }}
                       value={toDateInput(editing.expiresAt)}
-                      onChange={(e) => up({ expiresAt: fromDateInput(e.target.value) })}
+                      onChange={(e) =>
+                        up({
+                          expiresAt: fromDateInput(e.target.value),
+                        })
+                      }
                     />
                   </div>
 
                   <div>
                     <label style={labelStyle}>Times Redeemed</label>
+
                     <input
                       disabled
                       className={inputBase}
-                      style={{ borderColor: theme.border, background: '#f3f3f3', color: '#666' }}
+                      style={{
+                        borderColor: theme.border,
+                        background: '#f3f3f3',
+                        color: '#666',
+                      }}
                       value={editing.timesRedeemed ?? 0}
                       placeholder="0"
                     />
@@ -673,6 +1098,7 @@ export default function PromoCodes() {
                 >
                   <button
                     onClick={closeForm}
+                    disabled={saving}
                     style={{
                       height: 44,
                       padding: '0 14px',
@@ -681,11 +1107,13 @@ export default function PromoCodes() {
                       background: '#fff',
                       color: theme.black,
                       fontWeight: 800,
-                      cursor: 'pointer',
+                      cursor: saving ? 'not-allowed' : 'pointer',
+                      opacity: saving ? 0.6 : 1,
                     }}
                   >
                     Cancel
                   </button>
+
                   <button
                     onClick={save}
                     disabled={saving}
@@ -697,11 +1125,15 @@ export default function PromoCodes() {
                       background: theme.primary,
                       color: theme.black,
                       fontWeight: 800,
-                      cursor: 'pointer',
+                      cursor: saving ? 'not-allowed' : 'pointer',
                       opacity: saving ? 0.6 : 1,
                     }}
                   >
-                    {saving ? 'Saving…' : editing.id ? 'Save Changes' : 'Create Code'}
+                    {saving
+                      ? 'Saving…'
+                      : editing.id
+                      ? 'Save Changes'
+                      : 'Create Code'}
                   </button>
                 </div>
               </div>

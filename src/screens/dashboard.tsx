@@ -17,6 +17,23 @@ const toText = (v: any) => (typeof v === 'string' ? v : v?.address ?? '');
 
 const getStatus = (value: any) => String(value || '').toLowerCase().trim();
 
+// HILBU service types: old trips without serviceType are always Recovery.
+// Pickup must be explicitly tagged serviceType: 'pickup' when booking is enabled.
+type HilbuService = 'recovery' | 'pickup';
+
+const getJobService = (job: any): HilbuService =>
+  String(job?.serviceType || '').trim().toLowerCase() === 'pickup' ? 'pickup' : 'recovery';
+
+const serviceLabel = (job: any) =>
+  getJobService(job) === 'pickup' ? 'Pickup Delivery' : 'Car Recovery';
+
+type ServiceTripStats = { active: number; completed: number; cancelled: number };
+type ServiceBreakdown = Record<HilbuService, ServiceTripStats>;
+const blankServiceBreakdown = (): ServiceBreakdown => ({
+  recovery: { active: 0, completed: 0, cancelled: 0 },
+  pickup: { active: 0, completed: 0, cancelled: 0 },
+});
+
 const isPendingUser = (user: any) => {
   const status = getStatus(user.status || user.approvalStatus || user.accountStatus);
   return (
@@ -101,6 +118,7 @@ export default function Dashboard({ setActiveTab }: { setActiveTab: (tab: Screen
   const [pendingSupportMessages, setPendingSupportMessages] = useState(0);
 
   const [recentJobs, setRecentJobs] = useState<any[]>([]);
+  const [serviceBreakdown, setServiceBreakdown] = useState<ServiceBreakdown>(blankServiceBreakdown);
 
   useEffect(() => {
     const saved = localStorage.getItem('admin-auth');
@@ -135,11 +153,24 @@ export default function Dashboard({ setActiveTab }: { setActiveTab: (tab: Screen
       const recoveryData: any[] = [];
       recoverySnap.forEach((docSnap) => recoveryData.push({ id: docSnap.id, ...docSnap.data() }));
 
+      // Preserve the original totals while providing a per-service breakdown.
       setActiveTrips(recoveryData.filter((trip) => isActiveTripStatus(trip.status)).length);
       setCancelledTrips(recoveryData.filter((trip) => isCancelledTripStatus(trip.status)).length);
 
       const completedTripsSnap = await getDocs(collection(firestore, 'trip_history_user'));
       setCompletedTrips(completedTripsSnap.size);
+
+      const breakdown = blankServiceBreakdown();
+      recoveryData.forEach((trip) => {
+        const service = getJobService(trip);
+        if (isActiveTripStatus(trip.status)) breakdown[service].active++;
+        if (isCancelledTripStatus(trip.status)) breakdown[service].cancelled++;
+      });
+      completedTripsSnap.forEach((tripSnap) => {
+        const service = getJobService(tripSnap.data());
+        breakdown[service].completed++;
+      });
+      setServiceBreakdown(breakdown);
 
       const payoutsSnap = await getDocs(collection(firestore, 'payout_requests'));
       const payoutData: any[] = [];
@@ -280,12 +311,18 @@ export default function Dashboard({ setActiveTab }: { setActiveTab: (tab: Screen
             <SmallCard label="Completed Trips" value={completedTrips} />
             <SmallCard label="Cancelled / Rejected" value={cancelledTrips} />
           </div>
+
+          <h2 style={styles.sectionTitle}>Service Breakdown</h2>
+          <div style={styles.serviceBreakdownRow}>
+            <ServiceCard label="Car Recovery" values={serviceBreakdown.recovery} />
+            <ServiceCard label="Pickup Delivery" values={serviceBreakdown.pickup} />
+          </div>
         </>
       )}
 
       <div style={styles.jobsBlock}>
         <div style={styles.jobsHeaderRow}>
-          <h3 style={styles.sectionTitle}>📄 Recent Recovery Jobs</h3>
+          <h3 style={styles.sectionTitle}>📄 Recent Jobs</h3>
 
           <button onClick={() => setActiveTab('trips')} style={styles.viewAllButton}>
             View all trips
@@ -293,7 +330,7 @@ export default function Dashboard({ setActiveTab }: { setActiveTab: (tab: Screen
         </div>
 
         {recentJobs.length === 0 ? (
-          <p style={styles.noJobs}>No recent recovery jobs found.</p>
+          <p style={styles.noJobs}>No recent jobs found.</p>
         ) : (
           <div style={styles.jobsList}>
             {recentJobs.map((job) => (
@@ -304,14 +341,26 @@ export default function Dashboard({ setActiveTab }: { setActiveTab: (tab: Screen
                     {job.dropoffAddress || toText(job.dropoff) || 'Drop-off not available'}
                   </span>
 
-                  <span
-                    style={{
-                      ...styles.statusBadge,
-                      backgroundColor: statusColor(job.status),
-                    }}
-                  >
-                    {prettyStatus(job.status)}
-                  </span>
+                  <div style={styles.jobBadges}>
+                    <span
+                      style={{
+                        ...styles.serviceBadge,
+                        ...(getJobService(job) === 'pickup'
+                          ? styles.pickupBadge
+                          : styles.recoveryBadge),
+                      }}
+                    >
+                      {serviceLabel(job)}
+                    </span>
+                    <span
+                      style={{
+                        ...styles.statusBadge,
+                        backgroundColor: statusColor(job.status),
+                      }}
+                    >
+                      {prettyStatus(job.status)}
+                    </span>
+                  </div>
                 </div>
 
                 <div style={styles.jobMetaRow}>
@@ -322,6 +371,14 @@ export default function Dashboard({ setActiveTab }: { setActiveTab: (tab: Screen
                   {job.price && <span style={styles.jobMetaItem}>Price: AED {job.price}</span>}
                   {job.distanceKm && (
                     <span style={styles.jobMetaItem}>Distance: {job.distanceKm} km</span>
+                  )}
+                  {getJobService(job) === 'pickup' && (job.itemType || job.itemDetails) && (
+                    <span style={styles.jobMetaItem}>
+                      Item: {String(job.itemType || job.itemDetails)}
+                    </span>
+                  )}
+                  {getJobService(job) === 'pickup' && job.loadingHelp === true && (
+                    <span style={styles.jobMetaItem}>Loading / unloading help requested</span>
                   )}
                 </div>
               </div>
@@ -363,6 +420,28 @@ function Card({
       <p style={styles.cardLabel}>{label}</p>
       <p style={styles.cardValue}>{value}</p>
       <p style={styles.cardSub}>{sub}</p>
+    </div>
+  );
+}
+
+function ServiceCard({ label, values }: { label: string; values: ServiceTripStats }) {
+  return (
+    <div style={styles.serviceCard}>
+      <p style={styles.serviceCardTitle}>{label}</p>
+      <div style={styles.serviceCountsRow}>
+        <div style={styles.serviceCount}>
+          <span style={styles.serviceCountValue}>{values.active}</span>
+          <span style={styles.serviceCountLabel}>Active</span>
+        </div>
+        <div style={styles.serviceCount}>
+          <span style={styles.serviceCountValue}>{values.completed}</span>
+          <span style={styles.serviceCountLabel}>Completed</span>
+        </div>
+        <div style={styles.serviceCount}>
+          <span style={styles.serviceCountValue}>{values.cancelled}</span>
+          <span style={styles.serviceCountLabel}>Cancelled</span>
+        </div>
+      </div>
     </div>
   );
 }
@@ -520,6 +599,49 @@ const styles: Record<string, React.CSSProperties> = {
     marginTop: 8,
     marginBottom: 0,
   },
+  serviceBreakdownRow: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 16,
+    marginBottom: 32,
+  },
+  serviceCard: {
+    flex: '1 1 280px',
+    borderRadius: 16,
+    border: '1px solid #FFDC00',
+    padding: 16,
+    backgroundColor: '#fff',
+    boxShadow: '0 4px 10px rgba(0,0,0,0.08)',
+    minWidth: 0,
+  },
+  serviceCardTitle: {
+    color: '#000',
+    fontWeight: 700,
+    fontSize: 17,
+    marginTop: 0,
+    marginBottom: 16,
+  },
+  serviceCountsRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  serviceCount: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: 6,
+    flex: 1,
+  },
+  serviceCountValue: {
+    fontWeight: 700,
+    fontSize: 23,
+    color: '#000',
+  },
+  serviceCountLabel: {
+    fontSize: 12,
+    color: '#555',
+  },
   jobsBlock: {
     marginTop: 24,
   },
@@ -565,6 +687,28 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#000',
     fontWeight: 600,
     lineHeight: 1.5,
+  },
+  jobBadges: {
+    display: 'flex',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
+    flexShrink: 0,
+  },
+  serviceBadge: {
+    fontSize: 12,
+    padding: '5px 10px',
+    borderRadius: 999,
+    fontWeight: 700,
+    whiteSpace: 'nowrap',
+  },
+  recoveryBadge: {
+    backgroundColor: '#000',
+    color: '#FFDC00',
+  },
+  pickupBadge: {
+    backgroundColor: '#FFDC00',
+    color: '#000',
   },
   statusBadge: {
     fontSize: 12,

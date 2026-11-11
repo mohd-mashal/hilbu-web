@@ -58,6 +58,11 @@ interface Driver {
 
   vehicle?: string;
   plateNumber?: string;
+  // New registrations choose their service; legacy accounts remain Recovery.
+  vehicleType?: 'recovery' | 'pickup' | string;
+  serviceType?: 'recovery' | 'pickup' | string;
+  pickupEnabled?: boolean;
+  verified?: boolean;
 
   licenseUrl?: string;
   emiratesIdUrl?: string;
@@ -84,6 +89,44 @@ interface Trip {
   timestamp?: any;
 }
 
+
+/* ---------------------------------
+   Recovery / Pickup compatibility
+   - Existing drivers without a type are Recovery.
+   - Only a registered Pickup driver can be enabled for Pickup jobs.
+---------------------------------- */
+
+type HilbuVehicleType = 'recovery' | 'pickup';
+
+function resolveDriverVehicleType(driver: Partial<Driver> | null | undefined): HilbuVehicleType {
+  return driver?.vehicleType === 'pickup' || driver?.serviceType === 'pickup'
+    ? 'pickup'
+    : 'recovery';
+}
+
+function vehicleTypeLabel(driver: Partial<Driver> | null | undefined): string {
+  return resolveDriverVehicleType(driver) === 'pickup'
+    ? 'Pickup Truck'
+    : 'Recovery Truck';
+}
+
+function approvalUpdates(driver: Driver): Record<string, any> {
+  const pickup = resolveDriverVehicleType(driver) === 'pickup';
+  return {
+    status: 'active',
+    verified: true,
+    // Never authorize the wrong vehicle type on approval.
+    recovery: !pickup,
+    pickupEnabled: pickup,
+    adminNote: '',
+  };
+}
+
+function approvalPushMessage(driver: Driver): string {
+  return resolveDriverVehicleType(driver) === 'pickup'
+    ? 'Your driver profile has been approved. You can now accept pickup delivery jobs.'
+    : 'Your driver profile has been approved. You can now accept recovery jobs.';
+}
 
 /* ---------------------------------
    Helpers
@@ -771,6 +814,9 @@ export default function AdminDrivers() {
       | 'inactive'
     >('all');
 
+  const [filterVehicleType, setFilterVehicleType] =
+    useState<'all' | HilbuVehicleType>('all');
+
 
   const [
     autoApprove,
@@ -1144,6 +1190,15 @@ export default function AdminDrivers() {
       }
 
 
+      if (
+        to === 'active' &&
+        resolveDriverVehicleType(driver) === 'pickup' &&
+        driver.verified !== true
+      ) {
+        alert('A Pickup driver must be approved and verified before activation.');
+        return;
+      }
+
       await updateDriverEverywhere(
         driver,
         {
@@ -1215,6 +1270,11 @@ export default function AdminDrivers() {
       }
 
 
+      if (resolveDriverVehicleType(driver) !== 'recovery') {
+        alert('This account uses a Pickup Truck. Use Pickup Jobs instead.');
+        return;
+      }
+
       await updateDriverEverywhere(
         driver,
         {
@@ -1243,6 +1303,37 @@ export default function AdminDrivers() {
 
     }
 
+  };
+
+
+  // Pickup availability is independent from the existing Recovery switch.
+  const setPickup = async (id: string, to: boolean) => {
+    const driver = drivers.find((d) => d.id === id);
+    if (!driver) {
+      alert('Driver not found.');
+      return;
+    }
+    if (resolveDriverVehicleType(driver) !== 'pickup') {
+      alert('This account uses a Recovery Truck. Use Recovery Jobs instead.');
+      return;
+    }
+    if (to && (driver.status !== 'active' || driver.verified !== true)) {
+      alert('Approve and verify the Pickup driver before enabling jobs.');
+      return;
+    }
+    if (!window.confirm(`${to ? 'Enable' : 'Disable'} pickup delivery jobs for this driver?`)) {
+      return;
+    }
+    try {
+      await updateDriverEverywhere(driver, {
+        pickupEnabled: to,
+        recovery: false,
+      });
+      alert('Driver pickup availability updated.');
+    } catch (error) {
+      console.error('Error toggling pickup:', error);
+      alert('Error updating pickup status.');
+    }
   };
 
 
@@ -1460,9 +1551,14 @@ export default function AdminDrivers() {
           );
 
 
+        const matchesVehicleType =
+          filterVehicleType === 'all' ||
+          resolveDriverVehicleType(driver) === filterVehicleType;
+
         return (
           matchesSearch &&
-          matchesStatus
+          matchesStatus &&
+          matchesVehicleType
         );
       }
     );
@@ -1474,7 +1570,9 @@ export default function AdminDrivers() {
         driver
       ) =>
         driver.status ===
-        'pending_approval'
+          'pending_approval' &&
+        (filterVehicleType === 'all' ||
+          resolveDriverVehicleType(driver) === filterVehicleType)
     );
 
 
@@ -1483,7 +1581,7 @@ export default function AdminDrivers() {
 
     if (
       !window.confirm(
-        `Approve ALL ${pendingDrivers.length} pending drivers?`
+        `Approve ${pendingDrivers.length} pending ${filterVehicleType === 'all' ? 'drivers' : filterVehicleType + ' drivers'}?\n\nConfirm you have reviewed the required documents and vehicle permissions for EACH driver.`
       )
     ) {
       return;
@@ -1499,19 +1597,7 @@ export default function AdminDrivers() {
 
         await updateDriverEverywhere(
           driver,
-          {
-            status:
-              'active',
-
-            verified:
-              true,
-
-            recovery:
-              true,
-
-            adminNote:
-              '',
-          }
+          approvalUpdates(driver)
         );
 
 
@@ -1522,7 +1608,7 @@ export default function AdminDrivers() {
           await sendPushNotification(
             driver.expoPushToken,
             '✅ HILBU Approval',
-            'Your driver profile has been approved. You can now accept recovery jobs.'
+            approvalPushMessage(driver)
           );
 
         }
@@ -1581,19 +1667,7 @@ export default function AdminDrivers() {
 
       await updateDriverEverywhere(
         driver,
-        {
-          status:
-            'active',
-
-          verified:
-            true,
-
-          recovery:
-            true,
-
-          adminNote:
-            '',
-        }
+        approvalUpdates(driver)
       );
 
 
@@ -1604,7 +1678,7 @@ export default function AdminDrivers() {
         await sendPushNotification(
           driver.expoPushToken,
           '✅ HILBU Approval',
-          'Your driver profile has been approved. You can now accept recovery jobs.'
+          approvalPushMessage(driver)
         );
 
       }
@@ -1682,6 +1756,9 @@ export default function AdminDrivers() {
             false,
 
           recovery:
+            false,
+
+          pickupEnabled:
             false,
 
           adminNote:
@@ -1933,6 +2010,11 @@ export default function AdminDrivers() {
                         {driver.phone}
                       </p>
 
+
+                      <p>
+                        <strong>Vehicle Type:</strong>{' '}
+                        {vehicleTypeLabel(driver)}
+                      </p>
 
                       {
                         driver.vehicle && (
@@ -2240,6 +2322,19 @@ export default function AdminDrivers() {
 
         </select>
 
+        <select
+          aria-label="Filter by vehicle type"
+          value={filterVehicleType}
+          onChange={(e) =>
+            setFilterVehicleType(e.target.value as 'all' | HilbuVehicleType)
+          }
+          style={styles.filterSelect}
+        >
+          <option value="all">All Vehicle Types</option>
+          <option value="recovery">Recovery Trucks</option>
+          <option value="pickup">Pickup Trucks</option>
+        </select>
+
       </div>
 
 
@@ -2278,6 +2373,10 @@ export default function AdminDrivers() {
                     driver.recovery !==
                     false;
 
+                  const isPickupDriver = resolveDriverVehicleType(driver) === 'pickup';
+                  const hasPickup = driver.pickupEnabled !== false;
+                  const hasAssignedService = isPickupDriver ? hasPickup : hasRecovery;
+
 
                   const statusBtnLabel =
                     isActive
@@ -2289,6 +2388,11 @@ export default function AdminDrivers() {
                     hasRecovery
                       ? 'Disable Recovery Jobs'
                       : 'Enable Recovery Jobs';
+
+                  const pickupBtnLabel =
+                    hasPickup
+                      ? 'Disable Pickup Jobs'
+                      : 'Enable Pickup Jobs';
 
 
                   return (
@@ -2359,19 +2463,24 @@ export default function AdminDrivers() {
                       </p>
 
 
+                      <p style={styles.label}>
+                        🚚 Vehicle Type:{' '}
+                        <span style={styles.value}>{vehicleTypeLabel(driver)}</span>
+                      </p>
+
                       <p
                         style={
                           styles.label
                         }
                       >
-                        🛠 Recovery Jobs:{' '}
+                        {isPickupDriver ? '🛻 Pickup Jobs:' : '🛠 Recovery Jobs:'}{' '}
                         <span
                           style={
                             styles.value
                           }
                         >
                           {
-                            hasRecovery
+                            hasAssignedService
                               ? 'Enabled'
                               : 'Disabled'
                           }
@@ -2541,14 +2650,13 @@ export default function AdminDrivers() {
                             styles.button
                           }
                           onClick={() =>
-                            setRecovery(
-                              driver.id,
-                              !hasRecovery
-                            )
+                            isPickupDriver
+                              ? setPickup(driver.id, !hasPickup)
+                              : setRecovery(driver.id, !hasRecovery)
                           }
                         >
                           {
-                            recoveryBtnLabel
+                            isPickupDriver ? pickupBtnLabel : recoveryBtnLabel
                           }
                         </button>
 
@@ -2606,6 +2714,10 @@ export default function AdminDrivers() {
                 's Profile
               </h2>
 
+              <p>
+                <strong>🚚 Vehicle Type:</strong>{' '}
+                {vehicleTypeLabel(selectedDriver)}
+              </p>
 
               <p>
                 <strong>

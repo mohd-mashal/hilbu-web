@@ -6,19 +6,28 @@ import React, {
   useState,
   useEffect,
 } from 'react';
+
 import {
   GoogleMap,
   Marker,
   useJsApiLoader,
   DirectionsRenderer,
 } from '@react-google-maps/api';
-import { collection, onSnapshot, query, where } from 'firebase/firestore';
+
+import {
+  collection,
+  onSnapshot,
+  query,
+  where,
+} from 'firebase/firestore';
+
 import { firestore } from '../firebaseConfig';
 
 interface Coordinates {
   latitude: number;
   longitude: number;
 }
+
 interface MapComponentProps {
   location?: Coordinates;
   destination?: Coordinates;
@@ -30,52 +39,94 @@ const containerStyle: React.CSSProperties = {
   width: '100%',
   height: '100%',
   borderRadius: '12px',
-  border: '1px solid #FFDC00', // HILBU theme
+  border: '1px solid #FFDC00',
   overflow: 'hidden',
-  position: 'relative',        // for legend overlay
+  position: 'relative',
 };
 
-const defaultCenter = { lat: 25.2048, lng: 55.2708 };
+const defaultCenter = {
+  lat: 25.2048,
+  lng: 55.2708,
+};
 
-// Read the browser (web) key from env (Vite / Next / Vercel)
+// Read Google Maps key from Vite
 function readGoogleKey(): string {
-  const vite =
+  return (
     (typeof import.meta !== 'undefined' &&
       (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY) ||
     (typeof import.meta !== 'undefined' &&
-      (import.meta as any).env?.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY);
-  const node =
-    (typeof process !== 'undefined' &&
-      (process as any).env?.VITE_GOOGLE_MAPS_API_KEY) ||
-    (typeof process !== 'undefined' &&
-      (process as any).env?.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY);
-  return vite || node || '';
+      (import.meta as any).env?.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY) ||
+    ''
+  );
 }
 
-// Load a PNG at its natural pixel size (prevents stretching)
-function buildIcon(url: string): Promise<google.maps.Icon> {
+// Keep map marker images at a sensible size
+function buildIcon(
+  url: string,
+  maxWidth: number,
+  maxHeight: number
+): Promise<google.maps.Icon> {
   return new Promise((resolve) => {
     const img = new Image();
+
     img.onload = () => {
-      const w = img.naturalWidth || 30;
-      const h = img.naturalHeight || 30;
+      const naturalWidth =
+        img.naturalWidth || maxWidth;
+
+      const naturalHeight =
+        img.naturalHeight || maxHeight;
+
+      const scale = Math.min(
+        maxWidth / naturalWidth,
+        maxHeight / naturalHeight,
+        1
+      );
+
+      const width = Math.max(
+        1,
+        Math.round(naturalWidth * scale)
+      );
+
+      const height = Math.max(
+        1,
+        Math.round(naturalHeight * scale)
+      );
+
       resolve({
         url,
-        scaledSize: new window.google.maps.Size(w, h),
-        anchor: new window.google.maps.Point(w / 2, h),
+        scaledSize:
+          new window.google.maps.Size(
+            width,
+            height
+          ),
+        anchor:
+          new window.google.maps.Point(
+            width / 2,
+            height
+          ),
       } as google.maps.Icon);
     };
+
     img.onerror = () => {
       resolve({
         url,
-        scaledSize: new window.google.maps.Size(30, 35),
+        scaledSize:
+          new window.google.maps.Size(
+            maxWidth,
+            maxHeight
+          ),
+        anchor:
+          new window.google.maps.Point(
+            maxWidth / 2,
+            maxHeight
+          ),
       } as google.maps.Icon);
     };
+
     img.src = url;
   });
 }
 
-// Only libraries your package version supports
 const LIBRARIES: ('places')[] = ['places'];
 
 export default function MapComponent({
@@ -84,133 +135,337 @@ export default function MapComponent({
   towTruck,
   showDrivers = true,
 }: MapComponentProps) {
-  const mapRef = useRef<google.maps.Map | null>(null);
+  const mapRef =
+    useRef<google.maps.Map | null>(null);
+
   const [directions, setDirections] =
-    useState<google.maps.DirectionsResult | null>(null);
-  const [driverLocations, setDriverLocations] = useState<Coordinates[]>([]);
-  const [userCarIcon, setUserCarIcon] = useState<google.maps.Icon | undefined>(
-    undefined
-  );
-  const [towTruckIcon, setTowTruckIcon] = useState<
+    useState<
+      google.maps.DirectionsResult | null
+    >(null);
+
+  const [
+    driverLocations,
+    setDriverLocations,
+  ] = useState<Coordinates[]>([]);
+
+  const [
+    userCarIcon,
+    setUserCarIcon,
+  ] = useState<
+    google.maps.Icon | undefined
+  >(undefined);
+
+  const [
+    towTruckIcon,
+    setTowTruckIcon,
+  ] = useState<
     google.maps.Icon | undefined
   >(undefined);
 
   const apiKey = readGoogleKey();
 
-  const { isLoaded, loadError } = useJsApiLoader({
+  const {
+    isLoaded,
+    loadError,
+  } = useJsApiLoader({
     id: 'hilbu-admin-map',
     googleMapsApiKey: apiKey,
     libraries: LIBRARIES,
   });
 
-  // DEBUG (optional)
   useEffect(() => {
-    if (apiKey) console.log('Maps key (tail): …' + apiKey.slice(-8));
-    console.log('Host:', window.location.origin);
+    if (apiKey) {
+      console.log(
+        'Maps key (tail): …' +
+          apiKey.slice(-8)
+      );
+    }
+
+    console.log(
+      'Host:',
+      window.location.origin
+    );
   }, [apiKey]);
 
-  // Prepare marker icons
+  // Prepare properly sized icons
   useEffect(() => {
-    if (!isLoaded || !window.google) return;
+    if (
+      !isLoaded ||
+      !window.google
+    ) {
+      return;
+    }
+
     let mounted = true;
+
     (async () => {
-      const userIcon = await buildIcon('/MapCar.png');
-      const truckIcon = await buildIcon('/tow-truck.png');
+      const userIcon =
+        await buildIcon(
+          '/MapCar.png',
+          42,
+          42
+        );
+
+      const truckIcon =
+        await buildIcon(
+          '/tow-truck.png',
+          48,
+          42
+        );
+
       if (mounted) {
         setUserCarIcon(userIcon);
         setTowTruckIcon(truckIcon);
       }
     })();
+
     return () => {
       mounted = false;
     };
   }, [isLoaded]);
 
   const center = useMemo(() => {
-    if (location) return { lat: location.latitude, lng: location.longitude };
-    if (towTruck) return { lat: towTruck.latitude, lng: towTruck.longitude };
+    if (location) {
+      return {
+        lat: location.latitude,
+        lng: location.longitude,
+      };
+    }
+
+    if (towTruck) {
+      return {
+        lat: towTruck.latitude,
+        lng: towTruck.longitude,
+      };
+    }
+
     return defaultCenter;
   }, [location, towTruck]);
 
-  const onLoad = useCallback((map: google.maps.Map) => {
-    mapRef.current = map;
-  }, []);
+  const onLoad = useCallback(
+    (map: google.maps.Map) => {
+      mapRef.current = map;
+    },
+    []
+  );
 
   const onUnmount = useCallback(() => {
     mapRef.current = null;
   }, []);
 
-  // Live drivers (optional)
+  // Live online drivers
   useEffect(() => {
-    if (!showDrivers) return;
+    if (!showDrivers) {
+      setDriverLocations([]);
+      return;
+    }
+
     const driverQuery = query(
-      collection(firestore, 'drivers'),
-      where('isOnline', '==', true)
+      collection(
+        firestore,
+        'drivers'
+      ),
+      where(
+        'isOnline',
+        '==',
+        true
+      )
     );
-    const unsubscribe = onSnapshot(driverQuery, (snapshot) => {
-      const drivers: Coordinates[] = [];
-      snapshot.forEach((doc) => {
-        const data = doc.data() as any;
-        if (data.location?.latitude && data.location?.longitude) {
-          drivers.push({
-            latitude: data.location.latitude,
-            longitude: data.location.longitude,
-          });
+
+    const unsubscribe =
+      onSnapshot(
+        driverQuery,
+        (snapshot) => {
+          const drivers:
+            Coordinates[] = [];
+
+          snapshot.forEach(
+            (docSnap) => {
+              const data: any =
+                docSnap.data();
+
+              const latitude =
+                Number(
+                  data?.location
+                    ?.latitude
+                );
+
+              const longitude =
+                Number(
+                  data?.location
+                    ?.longitude
+                );
+
+              if (
+                Number.isFinite(
+                  latitude
+                ) &&
+                Number.isFinite(
+                  longitude
+                )
+              ) {
+                drivers.push({
+                  latitude,
+                  longitude,
+                });
+              }
+            }
+          );
+
+          setDriverLocations(
+            drivers
+          );
         }
-      });
-      setDriverLocations(drivers);
-    });
-    return () => unsubscribe();
+      );
+
+    return () =>
+      unsubscribe();
   }, [showDrivers]);
 
-  // Route between location & destination
+  // Route between pickup and destination
   useEffect(() => {
-    if (!location || !destination || !isLoaded) return;
-    const svc = new google.maps.DirectionsService();
+    if (
+      !location ||
+      !destination ||
+      !isLoaded
+    ) {
+      setDirections(null);
+      return;
+    }
+
+    const svc =
+      new google.maps.DirectionsService();
+
     svc.route(
       {
-        origin: { lat: location.latitude, lng: location.longitude },
+        origin: {
+          lat: location.latitude,
+          lng: location.longitude,
+        },
+
         destination: {
           lat: destination.latitude,
           lng: destination.longitude,
         },
-        travelMode: google.maps.TravelMode.DRIVING,
+
+        travelMode:
+          google.maps.TravelMode
+            .DRIVING,
       },
+
       (result, status) => {
-        if (status === google.maps.DirectionsStatus.OK && result) {
+        if (
+          status ===
+            google.maps
+              .DirectionsStatus.OK &&
+          result
+        ) {
           setDirections(result);
         } else {
           setDirections(null);
         }
       }
     );
-  }, [location, destination, isLoaded]);
+  }, [
+    location,
+    destination,
+    isLoaded,
+  ]);
 
-  // Auto-fit whenever markers/routes change
+  // Automatically fit map without zooming too close
   useEffect(() => {
-    if (!mapRef.current || !window.google || !isLoaded) return;
-    const bounds = new window.google.maps.LatLngBounds();
-    if (location)
-      bounds.extend({ lat: location.latitude, lng: location.longitude });
-    if (destination)
+    if (
+      !mapRef.current ||
+      !window.google ||
+      !isLoaded
+    ) {
+      return;
+    }
+
+    const map = mapRef.current;
+
+    const isDriverOverview =
+      showDrivers &&
+      !location &&
+      !destination &&
+      !towTruck;
+
+    const bounds =
+      new window.google.maps.LatLngBounds();
+
+    if (location) {
+      bounds.extend({
+        lat: location.latitude,
+        lng: location.longitude,
+      });
+    }
+
+    if (destination) {
       bounds.extend({
         lat: destination.latitude,
         lng: destination.longitude,
       });
-    if (towTruck)
-      bounds.extend({ lat: towTruck.latitude, lng: towTruck.longitude });
-    driverLocations.forEach((d) =>
-      bounds.extend({ lat: d.latitude, lng: d.longitude })
-    );
-    if (!bounds.isEmpty()) {
-      mapRef.current.fitBounds(bounds, 60);
-    } else {
-      mapRef.current.setCenter(defaultCenter);
-      mapRef.current.setZoom(12);
     }
-  }, [isLoaded, location, destination, towTruck, driverLocations]);
 
-  // Error & loading states
+    if (towTruck) {
+      bounds.extend({
+        lat: towTruck.latitude,
+        lng: towTruck.longitude,
+      });
+    }
+
+    driverLocations.forEach(
+      (driver) => {
+        bounds.extend({
+          lat: driver.latitude,
+          lng: driver.longitude,
+        });
+      }
+    );
+
+    if (!bounds.isEmpty()) {
+      map.fitBounds(
+        bounds,
+        isDriverOverview
+          ? 90
+          : 60
+      );
+
+      if (isDriverOverview) {
+        google.maps.event.addListenerOnce(
+          map,
+          'idle',
+          () => {
+            const currentZoom =
+              map.getZoom();
+
+            if (
+              currentZoom !== undefined &&
+              currentZoom !== null &&
+              currentZoom > 12
+            ) {
+              map.setZoom(12);
+            }
+          }
+        );
+      }
+    } else {
+      map.setCenter(
+        defaultCenter
+      );
+
+      map.setZoom(11);
+    }
+  }, [
+    isLoaded,
+    location,
+    destination,
+    towTruck,
+    driverLocations,
+    showDrivers,
+  ]);
+
+  // Missing API key
   if (!apiKey) {
     return (
       <div
@@ -218,22 +473,38 @@ export default function MapComponent({
           ...containerStyle,
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'center',
+          justifyContent:
+            'center',
           padding: 16,
         }}
       >
         <div>
-          <div style={{ fontWeight: 700, color: '#000' }}>
+          <div
+            style={{
+              fontWeight: 700,
+              color: '#000',
+            }}
+          >
             Missing Google Maps key.
           </div>
-          <div style={{ color: '#000' }}>
-            Set <code>VITE_GOOGLE_MAPS_API_KEY</code> on your host and redeploy.
+
+          <div
+            style={{
+              color: '#000',
+            }}
+          >
+            Set{' '}
+            <code>
+              VITE_GOOGLE_MAPS_API_KEY
+            </code>{' '}
+            on your host and redeploy.
           </div>
         </div>
       </div>
     );
   }
 
+  // Google Maps loading error
   if (loadError) {
     return (
       <div
@@ -241,19 +512,41 @@ export default function MapComponent({
           ...containerStyle,
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'center',
+          justifyContent:
+            'center',
           padding: 16,
         }}
       >
         <div>
-          <div style={{ fontWeight: 700, color: '#000' }}>
+          <div
+            style={{
+              fontWeight: 700,
+              color: '#000',
+            }}
+          >
             Google Maps failed to load.
           </div>
-          <div style={{ color: '#000' }}>
-            Check Web key referrers and API restrictions.
+
+          <div
+            style={{
+              color: '#000',
+            }}
+          >
+            Check Web key referrers and API
+            restrictions.
           </div>
-          <div style={{ color: '#000', marginTop: 8, fontSize: 12 }}>
-            Error: {(loadError as any)?.message || String(loadError)}
+
+          <div
+            style={{
+              color: '#000',
+              marginTop: 8,
+              fontSize: 12,
+            }}
+          >
+            Error:{' '}
+            {(loadError as any)
+              ?.message ||
+              String(loadError)}
           </div>
         </div>
       </div>
@@ -261,31 +554,59 @@ export default function MapComponent({
   }
 
   if (!isLoaded) {
-    return <div style={{ textAlign: 'center', padding: 20 }}>Loading map…</div>;
+    return (
+      <div
+        style={{
+          textAlign: 'center',
+          padding: 20,
+        }}
+      >
+        Loading map…
+      </div>
+    );
   }
 
   return (
     <div style={containerStyle}>
       <GoogleMap
-        mapContainerStyle={{ width: '100%', height: '100%' }}
+        mapContainerStyle={{
+          width: '100%',
+          height: '100%',
+        }}
         center={center}
-        zoom={14}
+        zoom={11}
         onLoad={onLoad}
         onUnmount={onUnmount}
         options={{
-          gestureHandling: 'greedy',
-          mapTypeControl: false,
-          streetViewControl: false,
-          fullscreenControl: false,
+          gestureHandling:
+            'greedy',
+
+          mapTypeControl:
+            false,
+
+          streetViewControl:
+            false,
+
+          fullscreenControl:
+            false,
+
           zoomControl: true,
+
+          minZoom: 8,
+
+          maxZoom: 18,
         }}
       >
         {location && (
           <Marker
-            position={{ lat: location.latitude, lng: location.longitude }}
+            position={{
+              lat: location.latitude,
+              lng: location.longitude,
+            }}
             icon={userCarIcon}
           />
         )}
+
         {destination && (
           <Marker
             position={{
@@ -295,44 +616,88 @@ export default function MapComponent({
             label="Drop-off"
           />
         )}
+
         {towTruck && (
           <Marker
-            position={{ lat: towTruck.latitude, lng: towTruck.longitude }}
+            position={{
+              lat: towTruck.latitude,
+              lng: towTruck.longitude,
+            }}
             icon={towTruckIcon}
           />
         )}
+
         {showDrivers &&
-          driverLocations.map((driver, index) => (
-            <Marker
-              key={`driver-${index}`}
-              position={{ lat: driver.latitude, lng: driver.longitude }}
-              icon={towTruckIcon}
-            />
-          ))}
-        {directions && <DirectionsRenderer directions={directions} />}
+          driverLocations.map(
+            (
+              driver,
+              index
+            ) => (
+              <Marker
+                key={`driver-${index}`}
+                position={{
+                  lat: driver.latitude,
+                  lng: driver.longitude,
+                }}
+                icon={
+                  towTruckIcon
+                }
+              />
+            )
+          )}
+
+        {directions && (
+          <DirectionsRenderer
+            directions={
+              directions
+            }
+          />
+        )}
       </GoogleMap>
 
-      {/* Legend overlay */}
+      {/* Legend */}
       <div
         style={{
           position: 'absolute',
           left: 12,
           bottom: 12,
-          backgroundColor: 'rgba(255,255,255,0.95)',
+          backgroundColor:
+            'rgba(255,255,255,0.96)',
           borderRadius: 12,
           padding: '8px 12px',
-          boxShadow: '0 2px 6px rgba(0,0,0,0.12)',
+          boxShadow:
+            '0 2px 8px rgba(0,0,0,0.15)',
+          border:
+            '1px solid rgba(0,0,0,0.08)',
           fontSize: 12,
           color: '#000',
           display: 'flex',
-          flexDirection: 'column',
+          flexDirection:
+            'column',
           gap: 4,
+          zIndex: 5,
         }}
       >
-        <div style={{ fontWeight: 700, marginBottom: 2 }}>Legend</div>
-        <div>🚗 User / Pickup</div>
-        <div>🚚 Online Drivers / Tow Trucks</div>
-        <div>📍 Drop-off (label “Drop-off”)</div>
+        <div
+          style={{
+            fontWeight: 700,
+            marginBottom: 2,
+          }}
+        >
+          Legend
+        </div>
+
+        <div>
+          🚗 User / Pickup
+        </div>
+
+        <div>
+          🚚 Online Drivers / Tow Trucks
+        </div>
+
+        <div>
+          📍 Drop-off
+        </div>
       </div>
     </div>
   );
